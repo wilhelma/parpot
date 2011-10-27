@@ -35,18 +35,15 @@ static int const Threshold = 20;
 namespace {
 
 	enum ModRefResult {
-		NoModRef = 0x00,
+		NoModRef = 0x0,
 		Ref			 = 0x1,
 		Mod			 = 0x2,
-		ModRef = 0x3
+		ModRef 	 = 0x3
 	};
 
-	ModRefResult operator|(ModRefResult lhs, ModRefResult rhs) {
-		return (ModRefResult) ((int)lhs | (int)rhs);
-	}
-
-	ModRefResult operator|=(ModRefResult lhs, ModRefResult rhs) {
-		return (ModRefResult) ((int)lhs | (int)rhs);
+	ModRefResult& operator|=(ModRefResult &lhs, ModRefResult rhs) {
+		lhs = static_cast<ModRefResult>((int)lhs | (int)rhs);
+		return lhs;
 	}
 
   struct Test1 : public ModulePass {
@@ -58,7 +55,6 @@ namespace {
 
     virtual bool runOnModule(Module &M) {
 
-    	AliasAnalysis &pAA = getAnalysis<AliasAnalysis>();
     	Module::iterator iFunc = M.begin(), eFunc = M.end();
     	for (; iFunc != eFunc; ++iFunc) {
       	ArgVectTy callArgs;
@@ -69,50 +65,10 @@ namespace {
       	for (; iArg != eArg; ++iArg) {
       		if (!iArg->getType()->isPointerTy())
       			continue;
-      		errs() << "  Argument: " << *iArg << "\n";
-      		getModRefForArg(*iFunc, &*iArg);
+      		ModRefResult res = getModRefForArg(*iFunc, &*iArg);
+      		errs() << "  Argument: " << *iArg
+								<< "     is " << res << "\n";
       	}
-
-
-//      	ArgVectTy::iterator iCall =callArgs.begin(), eCall =callArgs.end();
-//      	for (; iCall != eCall; ++iCall) {
-//
-//      		CallSite cs(iCall->first);
-//      		errs() << "CallSite: " << *iCall->first << "\n";
-//
-//      		ArgVectTy::iterator iArg = iCall->second->begin(),
-//															eArg = iCall->second->end();
-//					for (; iArg != eArg; ++iArg) {
-//
-//					}
-//
-
-//      		CallArgsVectTy::reverse_iterator rCall = callArgs.rbegin();
-//      		for (; rCall->first != iCall->first; rCall++) {
-//
-//      			errs() << "check " << iCall->first << ":" << rCall->first
-//  								 << *iCall->first << " - "
-//  								 << *rCall->first << "\n";
-//      			CallSite cs1(iCall->first), cs2(rCall->first);
-//      			ArgVectTy::iterator iArg1 = iCall->second->begin(),
-//  															eArg1 = iCall->second->end();
-//      			for (; iArg1 != eArg1; ++iArg1) {
-//							ArgVectTy::iterator iArg2 = rCall->second->begin(),
-//																	eArg2 = rCall->second->end();
-//  						for (; iArg2 != eArg2; ++iArg2) {
-//  							errs() << "   1: " << (*iArg1)->getName()
-//  										 << "   2: " << (*iArg2)->getName();
-//  							AliasAnalysis::AliasResult res =
-//  									pAA.alias(AliasAnalysis::Location(*iArg1),
-//															AliasAnalysis::Location(*iArg2));
-//  							errs() << " res: " << res << "\n";
-//  						}
-//
-//  						getModRefForArg(*cs1.getCalledFunction(), *iArg1);
-//      			}
-//
-//      		}
-//      	}
     	}
       return false;
     }
@@ -168,24 +124,16 @@ namespace {
 			if (F.isDeclaration() || F.mayBeOverridden())
 				return NoModRef;
 
-			errs() << "Begin: " << *pArg << " in " << F.getName() << "\n";
 			Value::use_iterator iUse =pArg->use_begin(), eUse =pArg->use_end();
 			for (; iUse != eUse; ++iUse) {
-				errs() << "  Use: " << **iUse;
-
 				Instruction *inst = cast<Instruction>(*iUse);
 				visited[pArg] |= getModRefForInst(inst, pArg);
-				errs () << " and is: " << visited[pArg] << "\n";
 			}
 
 			return visited[pArg];
 		}
 
-		ModRefResult getModRefForInst(Instruction *I,
-																						const Value *pArg) const {
-
-			errs() << "    inst is... " << *I << "\n";
-
+		ModRefResult getModRefForInst(Instruction *I, const Value *pArg) const {
 			ModRefResult result = NoModRef;
 
       switch (I->getOpcode()) {
@@ -211,12 +159,10 @@ namespace {
         break;
       }
       case Instruction::Load:
-      	errs() << "    a load at " << *I << " with " << *pArg << " and " << *I->getOperand(0) << "\n";
       	if (pArg == I->getOperand(0))
       		result |= Ref;
       	break;
       case Instruction::Ret:
-        if (pArg == I->getOperand(0))
         	result |= Ref;
         break;
       case Instruction::Store:
@@ -248,7 +194,8 @@ namespace {
         result |= Ref;
         break;
       default:
-        // Something else - be speculative and say it isn't touched.
+      	errs() << "Instruction has not been analyzed: " << *I << "\n";
+      	// Something else - be speculative and say it isn't touched.
 					break;
       }
       // All uses examined - not captured.
