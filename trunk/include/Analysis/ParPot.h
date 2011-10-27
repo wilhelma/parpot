@@ -31,9 +31,17 @@
 #include <queue>
 #include <vector>
 
+enum ArgModRefResult {
+	NoModRef = 0x0,
+	Ref			 = 0x1,
+	Mod			 = 0x2,
+	ModRef 	 = 0x3
+};
+
+ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs);
+
 namespace llvm {
 class ParPot;
-
 
 class DGNodeSet {
   DGNodeSet(const DGNodeSet&);            // DO NOT IMPLEMENT
@@ -150,6 +158,15 @@ private:
 
   /// helper function to print a dependency type string
   void printDepType(raw_ostream&, unsigned char type) const;
+
+  /// analyzes whether and how an argument is accessed by a function
+  ArgModRefResult getModRefForArg(const Function*, Argument*) const;
+
+  /// analyzes how the instruction accesses the given value
+  ArgModRefResult getModRefForInst(Instruction *I, const Value *pArg) const;
+
+  ArgModRefResult getModRefForDSNode(const CallSite &CS,
+																		 const DSNode &node) const;
 
 public:
   static char ID; // Class identification, replacement for typeinfo

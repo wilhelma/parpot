@@ -31,6 +31,11 @@ const std::string ParPot::NoObj = "";
 const std::string ParPot::Separator =
 "  -------------------------------------------------------------------------\n";
 
+ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs) {
+	lhs = static_cast<ArgModRefResult>((int)lhs | (int)rhs);
+	return lhs;
+}
+
 // Register this pass...
 char ParPot::ID = 0;
 static RegisterPass<ParPot>
@@ -284,57 +289,8 @@ void ParPot::analyzeAliasAnalysis(Function *parent,
         // true (and anti-) dependence (A -> B)
         if (itA->first->isModifiedNode() && itB->first->isReadNode()) {
           if (iA < iB) {
+          	pDSG->getNodeForValue()
             dgIt->second->addDependence(iA, iB, TrueDependence, objA, objB);
-
-//            ImmutableCallSite cs(iA);
-//            DSGraph* calleeBUGraph = pBU_->getDSGraph(*cs.getCalledFunction());
-//
-//            errs() << "Function " << cs.getCalledFunction()->getName() << "\n";
-//
-//            const Function *func = cs.getCalledFunction();
-//            for (Function::arg_iterator iArg = func->arg_begin(),
-//            		eArg = func->arg_end(); iArg != eArg; ++iArg) {
-//								errs() << "Arg: " << iArg->getName() << "\n";
-//            }
-//
-//            DSScalarMap sMap = calleeBUGraph->getScalarMap();
-//            for (DSScalarMap::iterator iVal = sMap.begin(), eVal = sMap.end();
-//									iVal != eVal; ++iVal) {
-//            	errs() << iVal->first->getName() << ": ";
-//            	if (iVal->second.getNode()->isModifiedNode())
-//            		errs() << "Mod ";
-//            	if (iVal->second.getNode()->isReadNode())
-//            		errs() << "Ref ";
-//            }
-
-            //DSAA::getModRefInfo(ImmutableCallSite CS, const Location &Loc)
-
-//            ImmutableCallSite ics(iA);
-//            errs() << "AA for " << ics.getCalledFunction()->getName() << "\n";
-//
-//            for (ImmutableCallSite::arg_iterator iArg = ics.arg_begin(),
-//									eArg = ics.arg_end(); iArg != eArg; ++iArg) {
-//
-//            	const Value *Arg = *iArg;
-//            	if (Arg->getType()->isPointerTy()) {
-//            		MDNode *Tag = ics.getInstruction()->getMetadata(LLVMContext::MD_tbaa);
-//            		AliasAnalysis::Location Loc(Arg, pAA_->getTypeStoreSize(Arg->getType()), Tag);
-//            		AliasAnalysis::ModRefResult res = pAA_->getModRefInfo(ics, Loc);
-//
-//            		errs() << "   -" << Arg->getName() << " (" << res << ") ";
-//            		if (res == AliasAnalysis::ModRef)
-//										errs() << " : ModRef";
-//            		if (res == AliasAnalysis::Mod)
-//            			 errs() << " : Mod";
-//            		if (res == AliasAnalysis::Ref)
-//            			 errs() << " : Ref";
-//            		if (res == AliasAnalysis::NoModRef)
-//									 errs() << " : NoModRef";
-//            	}
-//            }
-//            errs() << "\n";
-
-
           }
           else
             dgIt->second->addDependence(iB, iA, AntiDependence, objB, objA);
@@ -613,3 +569,117 @@ void ParPot::collectNodeSets(Function *parent) {
     std::sort(nodeSetVec_.begin(), nodeSetVec_.end(), DGNodeSet::compare);
 }
 
+ArgModRefResult ParPot::getModRefForArg(const Function *pFunc,
+																				Argument* pArg) const {
+ 	typedef std::map<const Value*, ArgModRefResult> ArgResSetTy;
+	typedef std::vector<const Use*> UseVecTy;
+
+	static  ArgResSetTy visited;
+
+	assert(pArg->getType()->isPointerTy() && "Capture is for pointers only!");
+
+	// check if argument has already visited => return old result
+	{
+		ArgResSetTy::iterator it = visited.find(pArg);
+		if (it != visited.end())
+			return it->second;
+		else
+			visited[pArg] = NoModRef;
+	}
+
+	// Definitions with weak linkage may be overridden at linktime with
+	// something that writes memory, so treat them like declarations.
+	if (pFunc->isDeclaration() || pFunc->mayBeOverridden())
+		return NoModRef;
+
+	Value::use_iterator iUse = pArg->use_begin(), eUse = pArg->use_end();
+	for (; iUse != eUse; ++iUse) {
+		Instruction *inst = cast<Instruction>(*iUse);
+		visited[pArg] |= getModRefForInst(inst, pArg);
+	}
+
+	return visited[pArg];
+}
+
+/// analyzes how the instruction accesses the given value
+ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) const {
+	ArgModRefResult result = NoModRef;
+
+  switch (I->getOpcode()) {
+  case Instruction::Call:
+  case Instruction::Invoke: {
+    CallSite cs(I);
+    // Not captured if the callee is readonly, doesn't return a copy through
+    // its return value and doesn't unwind (a readonly function can leak bits
+    // by throwing an exception or not depending on the input value).
+    if (cs.onlyReadsMemory() && cs.doesNotThrow()
+														 && I->getType()->isVoidTy())
+      break;
+
+    // get called function as well as the corresponding argument in order
+    // to call this analysis-procedure recursively
+    Function::arg_iterator iFArg = cs.getCalledFunction()->arg_begin();
+    CallSite::arg_iterator iArg = cs.arg_begin(), eArg = cs.arg_end();
+    for (; iArg != eArg; ++iArg, ++iFArg) {
+			if (iArg->get() == pArg) {
+        result	|= getModRefForArg(cs.getCalledFunction(), &*iFArg);
+			}
+    }
+    break;
+  }
+  case Instruction::Load:
+  	if (pArg == I->getOperand(0))
+  		result |= Ref;
+  	break;
+  case Instruction::Ret:
+    	result |= Ref;
+    break;
+  case Instruction::Store:
+    if (pArg == I->getOperand(1))
+    	result |= Mod;
+    break;
+  case Instruction::GetElementPtr:
+  case Instruction::BitCast:
+  case Instruction::PHI:
+  case Instruction::Select:
+    // The original value is not touched via this if the new value isn't.
+    for (Instruction::use_iterator UI = I->use_begin(), UE = I->use_end();
+         UI != UE; ++UI) {
+    	Instruction* inst = (Instruction*)*UI;
+    	result |= getModRefForInst(inst, (Value*)I);
+    }
+    break;
+  case Instruction::ICmp:
+    // Don't count comparisons of a no-alias return value against null as
+    // captures. This allows us to ignore comparisons of malloc results
+    // with null, for example.
+    if (isNoAliasCall(pArg->stripPointerCasts()))
+      if (ConstantPointerNull *CPN =
+            dyn_cast<ConstantPointerNull>(I->getOperand(1)))
+        if (CPN->getType()->getAddressSpace() == 0)
+          break;
+    // Otherwise, be conservative. There are crazy ways to capture pointers
+    // using comparisons.
+    result |= Ref;
+    break;
+  default:
+  	errs() << "Instruction has not been analyzed: " << *I << "\n";
+  	// Something else - be speculative and say it isn't touched.
+			break;
+  }
+  // All uses examined - not captured.
+  return result;
+}
+
+ArgModRefResult getModRefForDSNode(const CallSite &CS,
+																	 const DSNode &node) const {
+	ArgModRefResult result = NoModRef;
+
+	CallSite::arg_iterator iArg = CS.arg_begin(), eArg = CS.arg_end();
+	for (; iArg != eArg; ++iArg)
+		if (iArg->get()->getType()->isPointerTy()) {
+
+		}
+
+
+}
