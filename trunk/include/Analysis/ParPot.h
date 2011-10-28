@@ -165,8 +165,9 @@ private:
   /// analyzes how the instruction accesses the given value
   ArgModRefResult getModRefForInst(Instruction *I, const Value *pArg) const;
 
-  ArgModRefResult getModRefForDSNode(const CallSite &CS,
-																		 const DSNode &node) const;
+  /// returns the mod/ref behavior of a callsite concerning a specific argument
+  ArgModRefResult getModRefForDSNode(const CallSite&,
+																		 const DSNodeHandle&) const;
 
 public:
   static char ID; // Class identification, replacement for typeinfo
