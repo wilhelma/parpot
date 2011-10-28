@@ -25,6 +25,7 @@
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/Constants.h"
 #include "llvm/Analysis/MemoryDependenceAnalysis.h"
+#include "Analysis/DepGraph.h"
 #include <vector>
 #include <map>
 
@@ -34,15 +35,15 @@ static int const Threshold = 20;
 
 namespace {
 
-	enum ModRefResult {
+	enum ArgModRefResult {
 		NoModRef = 0x0,
 		Ref			 = 0x1,
 		Mod			 = 0x2,
 		ModRef 	 = 0x3
 	};
 
-	ModRefResult& operator|=(ModRefResult &lhs, ModRefResult rhs) {
-		lhs = static_cast<ModRefResult>((int)lhs | (int)rhs);
+	ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs) {
+		lhs = static_cast<ArgModRefResult>((int)lhs | (int)rhs);
 		return lhs;
 	}
 
@@ -53,31 +54,42 @@ namespace {
   	typedef std::vector<Value*> ArgVectTy;
   	typedef std::map<Instruction*, ArgVectTy*> CallArgsVectTy;
 
+    enum AccTy { // access type
+      Read            = 0x0,
+      Change          = 0x1
+    };
+    typedef std::map<GlobalVariable*, AccTy> GlobAccMapTy; // access type per gv
+    typedef std::map<Function*, GlobAccMapTy> FuncGlobalsMapTy; // globals per fn
+    typedef std::map<Function*, DepGraph*> DepGraphMapTy; // dep. graph
+
+    DepGraphMapTy fDepGraphs_;
+
     virtual bool runOnModule(Module &M) {
 
     	Module::iterator iFunc = M.begin(), eFunc = M.end();
     	for (; iFunc != eFunc; ++iFunc) {
-      	ArgVectTy callArgs;
+      	CallArgsVectTy callArgs;
+    		getCallArgs(*iFunc, callArgs);
 
-      	errs() << "Function " << iFunc->getName() << "\n";
-      	Function::arg_iterator iArg = iFunc->arg_begin(),
-															 eArg = iFunc->arg_end();
-      	for (; iArg != eArg; ++iArg) {
-      		if (!iArg->getType()->isPointerTy())
-      			continue;
-      		ModRefResult res = getModRefForArg(*iFunc, &*iArg);
-      		errs() << "  Argument: " << *iArg
-								<< "     is " << res << "\n";
+    	  // create dependency graph for this node
+    	  DepGraph *graph = new DepGraph(&*iFunc);
+    	  fDepGraphs_[&*iFunc] = graph;
+
+      	CallArgsVectTy::iterator iAV = callArgs.begin(), eAV = callArgs.end();
+      	for (; iAV != eAV; ++iAV) {
+        	CallArgsVectTy::reverse_iterator rAV = callArgs.rbegin();
+        	for (; iAV->first != rAV->first; ++rAV) {
+        		analyzeCorrelation(&*iFunc, iAV->first, rAV->first);
+        	}
       	}
     	}
+
       return false;
     }
 
     // We don't modify the program, so we preserve all analyses
     virtual void getAnalysisUsage(AnalysisUsage &AU) const {
       AU.setPreservesAll();
-      AU.addRequired<MemoryDependenceAnalysis>();
-      AU.addRequired<AliasAnalysis>();
     }
 
 	private:
@@ -101,40 +113,141 @@ namespace {
      }
     }
 
-    ModRefResult getModRefForArg(const Function &F, Argument *pArg) const {
-    	typedef std::map<const Value*, ModRefResult> ArgResSetTy;
-    	typedef std::vector<const Use*> UseVecTy;
+    void analyzeCorrelation(Function *parent,
+        Instruction *iA, Instruction *iB, bool invert = false) {
 
-    	static  ArgResSetTy visited;
+      // check instructions
+      assert((isa<CallInst>(iA) || isa<InvokeInst>(iA)) &&
+             (isa<CallInst>(iA) || isa<InvokeInst>(iA)) &&
+             "Error, instructions are no function calls!");
 
-    	assert(&F && "Error: No Function!");
-    	assert(pArg->getType()->isPointerTy() && "Capture is for pointers only!");
+      DepGraphMapTy::iterator dgIt = fDepGraphs_.find(parent);
+      Function *fA = CallSite(iA).getCalledFunction();
 
-    	// check if argument has already visited => return old result
-    	{
-    		ArgResSetTy::iterator it = visited.find(pArg);
-    		if (it != visited.end())
-    			return it->second;
-    		else
-    			visited[pArg] = NoModRef;
-    	}
+        // look for pointer/reference parameters
+        for (Function::arg_iterator it = fA->arg_begin(), e = fA->arg_end();
+              it != e; ++it) {
+          if (it->getType()->isPointerTy()) {
+            ArgModRefResult res = getModRefForArg(*fA, &*it);
+            if (res & Mod) {
+              Value *arg = iA->getOperand(it->getArgNo()); //op(0)=function itself
+              if (checkDefUse(arg, &*iB, 0))
+              	errs() << "   control dep for " << *arg << " from " << parent->getName() << "\n";
+                dgIt->second->addDependence(iA, iB, ControlDependence,
+                                          arg->getName(), "-");
+            }
+          }
+        }
 
-    	// Definitions with weak linkage may be overridden at linktime with
-			// something that writes memory, so treat them like declarations.
-			if (F.isDeclaration() || F.mayBeOverridden())
-				return NoModRef;
+      // look for use of call instruction itself
+//      if (checkDefUse(&*iA, &*iB, 0)) {
+//        dgIt->second->addDependence(iA, iB, ControlDependence, "-", "-");
+//      }
 
-			Value::use_iterator iUse =pArg->use_begin(), eUse =pArg->use_end();
-			for (; iUse != eUse; ++iUse) {
-				Instruction *inst = cast<Instruction>(*iUse);
-				visited[pArg] |= getModRefForInst(inst, pArg);
-			}
+      // analyze the inverted order
+      if (invert) analyzeCorrelation (parent, iB, iA);
+    }
 
-			return visited[pArg];
+    bool checkDefUse(Value *val, Instruction *iB, int level) {
+    	errs() << "-value: " << *val << " at level: " << level << "\n";
+
+      static std::set<Value *> visitedVals;
+      if (!level)
+        visitedVals.clear();
+
+      // ignore alredy visited values
+      if (visitedVals.find(val) != visitedVals.end())
+        return false;
+      visitedVals.insert(val);
+
+      // check if function A is correlated with function B
+      if (isa<CallInst>(val) || isa<InvokeInst>(val)) {
+         Instruction *inst = dyn_cast<Instruction>(&*val);
+
+         // correlation found
+         if (inst == iB)
+           return true;
+      }
+
+      // consider store instructions
+      if (StoreInst *sInst = dyn_cast<StoreInst>(&*val)) {
+        if (checkDefUse(&*sInst->getPointerOperand(), iB, level + 1))
+          return true;
+      }
+
+      // consider branch instructions
+      if (BranchInst *bInst = dyn_cast<BranchInst>(&*val)) {
+        for (unsigned i=0; i<bInst->getNumSuccessors(); ++i) {
+          BasicBlock *bb = bInst->getSuccessor(i);
+          for (BasicBlock::iterator it = bb->begin(), e = bb->end();
+                it != e; ++it) {
+
+            // consider store instructions within branchens
+            if (StoreInst *sInst = dyn_cast<StoreInst>(&*it))
+              if (checkDefUse(&*sInst, iB, level + 1))
+                return true;
+
+            // consider PHINodes within branches
+            if (PHINode *phi = dyn_cast<PHINode>(&*it))
+              if (checkDefUse(&*phi, iB, level + 1))
+                return true;
+          }
+        }
+      }
+
+      // consider phi instructions
+      if (PHINode *phi = dyn_cast<PHINode>(val)) {
+      	for (int i=0; i<phi->getNumIncomingValues(); ++i) {
+      		if (checkDefUse(phi->getIncomingValue(i), iB, level + 1))
+      			return true;
+      	}
+      }
+
+      // check every use of the value recursively
+      for (Value::use_iterator iUse = val->use_begin(), eUse = val->use_end();
+            iUse != eUse; ++iUse) {
+
+        if (checkDefUse(*iUse, iB, level + 1))
+          return true;
+      }
+
+      return false;
+    }
+
+    ArgModRefResult getModRefForArg(const Function &F, Argument *pArg) const {
+        typedef std::map<const Value*, ArgModRefResult> ArgResSetTy;
+        typedef std::vector<const Use*> UseVecTy;
+
+        static  ArgResSetTy visited;
+
+        assert(&F && "Error: No Function!");
+        assert(pArg->getType()->isPointerTy() && "Capture is for pointers only!");
+
+        // check if argument has already visited => return old result
+        {
+                ArgResSetTy::iterator it = visited.find(pArg);
+                if (it != visited.end())
+                        return it->second;
+                else
+                        visited[pArg] = NoModRef;
+        }
+
+        // Definitions with weak linkage may be overridden at linktime with
+                        // something that writes memory, so treat them like declarations.
+                        if (F.isDeclaration() || F.mayBeOverridden())
+                                return NoModRef;
+
+                        Value::use_iterator iUse =pArg->use_begin(), eUse =pArg->use_end();
+                        for (; iUse != eUse; ++iUse) {
+                                Instruction *inst = cast<Instruction>(*iUse);
+                                visited[pArg] |= getModRefForInst(inst, pArg);
+                        }
+
+               return visited[pArg];
 		}
 
-		ModRefResult getModRefForInst(Instruction *I, const Value *pArg) const {
-			ModRefResult result = NoModRef;
+		ArgModRefResult getModRefForInst(Instruction *I, const Value *pArg) const {
+			ArgModRefResult result = NoModRef;
 
       switch (I->getOpcode()) {
       case Instruction::Call:
@@ -144,7 +257,7 @@ namespace {
         // its return value and doesn't unwind (a readonly function can leak bits
         // by throwing an exception or not depending on the input value).
         if (cs.onlyReadsMemory() && cs.doesNotThrow()
-																 && I->getType()->isVoidTy())
+                                                                                                                                 && I->getType()->isVoidTy())
           break;
 
         // get called function as well as the corresponding argument in order
@@ -152,22 +265,22 @@ namespace {
         Function::arg_iterator iFArg = cs.getCalledFunction()->arg_begin();
         CallSite::arg_iterator iArg = cs.arg_begin(), eArg = cs.arg_end();
         for (; iArg != eArg; ++iArg, ++iFArg) {
-					if (iArg->get() == pArg) {
-	          result	|= getModRefForArg(*cs.getCalledFunction(), &*iFArg);
-					}
+                                        if (iArg->get() == pArg) {
+                  result        |= getModRefForArg(*cs.getCalledFunction(), &*iFArg);
+                                        }
         }
         break;
       }
       case Instruction::Load:
-      	if (pArg == I->getOperand(0))
-      		result |= Ref;
-      	break;
+        if (pArg == I->getOperand(0))
+                result |= Ref;
+        break;
       case Instruction::Ret:
-        	result |= Ref;
+                result |= Ref;
         break;
       case Instruction::Store:
         if (pArg == I->getOperand(1))
-        	result |= Mod;
+                result |= Mod;
         break;
       case Instruction::GetElementPtr:
       case Instruction::BitCast:
@@ -176,8 +289,8 @@ namespace {
         // The original value is not touched via this if the new value isn't.
         for (Instruction::use_iterator UI = I->use_begin(), UE = I->use_end();
              UI != UE; ++UI) {
-        	Instruction* inst = (Instruction*)*UI;
-        	result |= getModRefForInst(inst, (Value*)I);
+                Instruction* inst = (Instruction*)*UI;
+                result |= getModRefForInst(inst, (Value*)I);
         }
         break;
       case Instruction::ICmp:
@@ -194,124 +307,13 @@ namespace {
         result |= Ref;
         break;
       default:
-      	errs() << "Instruction has not been analyzed: " << *I << "\n";
-      	// Something else - be speculative and say it isn't touched.
-					break;
+        errs() << "Instruction has not been analyzed: " << *I << "\n";
+        // Something else - be speculative and say it isn't touched.
+                                        break;
       }
       // All uses examined - not captured.
       return result;
 		}
-
-    /// PointerMayBeCaptured - Return true if this pointer value may be captured
-    /// by the enclosing function (which is required to exist).  This routine can
-    /// be expensive, so consider caching the results.  The boolean ReturnCaptures
-    /// specifies whether returning the value (or part of it) from the function
-    /// counts as capturing it or not.  The boolean StoreCaptures specified whether
-    /// storing the value (or part of it) into memory anywhere automatically
-    /// counts as capturing it or not.
-    bool PointerMayBeCaptured(const Value *V, bool ReturnCaptures,
-                                    bool StoreCaptures) const {
-      assert(V->getType()->isPointerTy() && "Capture is for pointers only!");
-      SmallVector<Use*, Threshold> Worklist;
-      SmallSet<Use*, Threshold> Visited;
-      int Count = 0;
-
-      for (Value::const_use_iterator UI = V->use_begin(), UE = V->use_end();
-           UI != UE; ++UI) {
-        // If there are lots of uses, conservatively say that the value
-        // is captured to avoid taking too much compile time.
-        if (Count++ >= Threshold)
-          return true;
-
-        Use *U = &UI.getUse();
-        Visited.insert(U);
-        Worklist.push_back(U);
-      }
-
-      while (!Worklist.empty()) {
-        Use *U = Worklist.pop_back_val();
-        Instruction *I = cast<Instruction>(U->getUser());
-        V = U->get();
-
-        switch (I->getOpcode()) {
-        case Instruction::Call:
-        case Instruction::Invoke: {
-          CallSite CS(I);
-          // Not captured if the callee is readonly, doesn't return a copy through
-          // its return value and doesn't unwind (a readonly function can leak bits
-          // by throwing an exception or not depending on the input value).
-          if (CS.onlyReadsMemory() && CS.doesNotThrow() && I->getType()->isVoidTy())
-            break;
-
-          // Not captured if only passed via 'nocapture' arguments.  Note that
-          // calling a function pointer does not in itself cause the pointer to
-          // be captured.  This is a subtle point considering that (for example)
-          // the callee might return its own address.  It is analogous to saying
-          // that loading a value from a pointer does not cause the pointer to be
-          // captured, even though the loaded value might be the pointer itself
-          // (think of self-referential objects).
-          CallSite::arg_iterator B = CS.arg_begin(), E = CS.arg_end();
-          for (CallSite::arg_iterator A = B; A != E; ++A)
-            if (A->get() == V && !CS.paramHasAttr(A - B + 1, Attribute::NoCapture))
-              // The parameter is not marked 'nocapture' - captured.
-              return true;
-          // Only passed via 'nocapture' arguments, or is the called function - not
-          // captured.
-          break;
-        }
-        case Instruction::Load:
-          // Loading from a pointer does not cause it to be captured.
-          break;
-        case Instruction::VAArg:
-          // "va-arg" from a pointer does not cause it to be captured.
-          break;
-        case Instruction::Ret:
-          if (ReturnCaptures)
-            return true;
-          break;
-        case Instruction::Store:
-          if (V == I->getOperand(0))
-            // Stored the pointer - conservatively assume it may be captured.
-            // TODO: If StoreCaptures is not true, we could do Fancy analysis
-            // to determine whether this store is not actually an escape point.
-            // In that case, BasicAliasAnalysis should be updated as well to
-            // take advantage of this.
-            return true;
-          // Storing to the pointee does not cause the pointer to be captured.
-          break;
-        case Instruction::BitCast:
-        case Instruction::GetElementPtr:
-        case Instruction::PHI:
-        case Instruction::Select:
-          // The original value is not captured via this if the new value isn't.
-          for (Instruction::use_iterator UI = I->use_begin(), UE = I->use_end();
-               UI != UE; ++UI) {
-            Use *U = &UI.getUse();
-            if (Visited.insert(U))
-              Worklist.push_back(U);
-          }
-          break;
-        case Instruction::ICmp:
-          // Don't count comparisons of a no-alias return value against null as
-          // captures. This allows us to ignore comparisons of malloc results
-          // with null, for example.
-          if (isNoAliasCall(V->stripPointerCasts()))
-            if (ConstantPointerNull *CPN =
-                  dyn_cast<ConstantPointerNull>(I->getOperand(1)))
-              if (CPN->getType()->getAddressSpace() == 0)
-                break;
-          // Otherwise, be conservative. There are crazy ways to capture pointers
-          // using comparisons.
-          return true;
-        default:
-          // Something else - be conservative and say it is captured.
-          return true;
-        }
-      }
-
-      // All uses examined - not captured.
-      return false;
-    }
 
   };
 }

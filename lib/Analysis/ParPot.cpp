@@ -220,6 +220,7 @@ void ParPot::analyzeCorrelation(Function *parent,
         if (node->isModifiedNode()) {
           Value *arg = iA->getOperand(it->getArgNo()+1); //op(0)=function itself
           if (checkDefUse(arg, &*iB, 0))
+          	errs() << "   control dep for " << parent->getName() << "\n";
             dgIt->second->addDependence(iA, iB, ControlDependence,
                                       arg->getName(), NoObj);
         }
@@ -228,8 +229,9 @@ void ParPot::analyzeCorrelation(Function *parent,
   }
 
   // look for use of call instruction itself
-  if (checkDefUse(&*iA, &*iB, 0))
+  if (checkDefUse(&*iA, &*iB, 0)) {
     dgIt->second->addDependence(iA, iB, ControlDependence, NoObj, NoObj);
+  }
 
   // analyze the inverted order
   if (invert) analyzeCorrelation (parent, iB, iA);
@@ -286,26 +288,25 @@ void ParPot::analyzeAliasAnalysis(Function *parent,
             objB = it->first->getName();
         }
 
+        ArgModRefResult resA = getModRefForDSNode(csA, itA->second);
+        ArgModRefResult resB = getModRefForDSNode(csB, itB->second);
+
         // true (and anti-) dependence (A -> B)
-        if (itA->first->isModifiedNode() && itB->first->isReadNode()) {
-          if (iA < iB) {
-          	pDSG->getNodeForValue()
-            dgIt->second->addDependence(iA, iB, TrueDependence, objA, objB);
-          }
+        if ((resA & Mod) && (resB & Ref))
+        	if (iA < iB)
+        		dgIt->second->addDependence(iA, iB, TrueDependence, objA, objB);
           else
             dgIt->second->addDependence(iB, iA, AntiDependence, objB, objA);
-        }
 
         // true (and anti-) dependence (B -> A)
-        else if (itA->first->isReadNode() && itB->first->isModifiedNode()) {
+        else if ((resA & Ref) && (resB & Mod))
           if (iA < iB)
             dgIt->second->addDependence(iA, iB, AntiDependence, objA, objB);
           else
             dgIt->second->addDependence(iB, iA, TrueDependence, objB, objA);
-        }
 
         // output dependence
-        else if (itA->first->isModifiedNode() && itB->first->isModifiedNode())
+        else if ((resA & Mod) && (resB & Mod))
           dgIt->second->addDependence(iA, iB, OutputDependence, objA, objB);
       }
 }
@@ -671,15 +672,25 @@ ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) cons
   return result;
 }
 
-ArgModRefResult getModRefForDSNode(const CallSite &CS,
-																	 const DSNode &node) const {
+ArgModRefResult ParPot::getModRefForDSNode(const CallSite &cS,
+																					 const DSNodeHandle &nH) const {
 	ArgModRefResult result = NoModRef;
 
-	CallSite::arg_iterator iArg = CS.arg_begin(), eArg = CS.arg_end();
-	for (; iArg != eArg; ++iArg)
-		if (iArg->get()->getType()->isPointerTy()) {
+	if (nH.getNode()->isReadNode()) result |= Ref;
+	if (nH.getNode()->isModifiedNode()) result |= Mod;
 
+	CallSite::arg_iterator iArg = cS.arg_begin(), eArg = cS.arg_end();
+	for (int i=0; iArg != eArg; ++iArg, ++i)
+		if (iArg->get()->getType()->isPointerTy()) {
+			const DSNodeHandle n =
+				nH.getNode()->getParentGraph()->getNodeForValue(iArg->get()).getNode();
+			if (n == nH) {
+				Function::arg_iterator iFArg = cS.getCalledFunction()->arg_begin();
+				for(int j=0; j < i; ++iFArg, ++j) { }
+				result = this->getModRefForArg(cS.getCalledFunction(), &*iFArg);
+				break;
+			}
 		}
 
-
+	return result;
 }
