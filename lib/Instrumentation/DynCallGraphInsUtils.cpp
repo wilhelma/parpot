@@ -23,6 +23,7 @@ void llvm::insertPrepareCallGraph(Function *mainFn, const char *fnName) {
   LLVMContext &context = mainFn->getContext();
   BasicBlock *entry = mainFn->begin();
   BasicBlock::iterator insertPos = entry->begin();
+  while (isa<AllocaInst>(insertPos)) ++insertPos;
 
   Type *ArgVTy = PointerType::getUnqual(Type::getInt8PtrTy(context));
   Module &M = *mainFn->getParent();
@@ -35,12 +36,7 @@ void llvm::insertPrepareCallGraph(Function *mainFn, const char *fnName) {
   Args[0] = Constant::getNullValue(Type::getInt32Ty(context));
   Args[1] = Constant::getNullValue(ArgVTy);
 
-  std::vector<Constant*> GEPIndices(2,
-                            Constant::getNullValue(Type::getInt32Ty(context)));
-
-  Instruction *InitCall =
-  		CallInst::Create(InitFn, makeArrayRef(Args), "", insertPos);
-
+   CallInst *InitCall = CallInst::Create(InitFn, Args, "", insertPos);
 
   // If argc or argv are not available in main, just pass null values in.
   Function::arg_iterator AI;
@@ -51,10 +47,10 @@ void llvm::insertPrepareCallGraph(Function *mainFn, const char *fnName) {
     if (AI->getType() != ArgVTy) {
       Instruction::CastOps opcode = CastInst::getCastOpcode(AI, false, ArgVTy,
                                                             false);
-      InitCall->setOperand(2,
+      InitCall->setArgOperand(1,
           CastInst::Create(opcode, AI, ArgVTy, "argv.cast", InitCall));
     } else {
-      InitCall->setOperand(2, AI);
+      InitCall->setArgOperand(1, AI);
     }
     /* FALL THROUGH */
 
@@ -64,13 +60,15 @@ void llvm::insertPrepareCallGraph(Function *mainFn, const char *fnName) {
     // init call instead.
     if (!AI->getType()->isIntegerTy(32)) {
       Instruction::CastOps opcode;
-      opcode = CastInst::getCastOpcode(AI, true,
-                                       Type::getInt32Ty(context), true);
-      InitCall->setOperand(1,
+      opcode = CastInst::getCastOpcode(AI, true, AI->getType(), true);
+      AI->replaceAllUsesWith(
+      		CastInst::Create(opcode, InitCall, AI->getType(), "", insertPos));
+      InitCall->setArgOperand(0,
           CastInst::Create(opcode, AI, Type::getInt32Ty(context),
                            "argc.cast", InitCall));
     } else {
-      InitCall->setOperand(1, AI);
+//      AI->replaceAllUsesWith(InitCall);
+    	InitCall->setArgOperand(0, AI);
     }
 
   case 0: break;
@@ -133,7 +131,8 @@ void llvm::addNotifyCall(CallSite *cs, BasicBlock *bb, const char *fnNameBefore,
       InvokeInst *invokeInst = dyn_cast<InvokeInst>(cs->getInstruction());
       insertPos = invokeInst->getNormalDest()->getFirstNonPHI();
       CallInst::Create(callFn, makeArrayRef(Args), "", insertPos);
-      insertPos = invokeInst->getUnwindDest()->getFirstNonPHI();
+      insertPos = invokeInst->getUnwindDest()->getLandingPadInst();
+      insertPos++;
       CallInst::Create(callFn, makeArrayRef(Args), "", insertPos);
     } else {
       insertPos++;

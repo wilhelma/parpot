@@ -106,6 +106,9 @@ bool DynCallGraphIns::runOnModule(Module &M) {
         else
           continue;
 
+        if (pCS->getCalledFunction()->getNameStr()
+							== "llvm_call_finished_instruction")
+        	continue;
         GlobalVariable *gv;
         if (Function *f = pCS->getCalledFunction()) {
           gv = getGV(M, F->getContext(), f->getName());

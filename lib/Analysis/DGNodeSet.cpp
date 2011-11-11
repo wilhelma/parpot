@@ -18,7 +18,7 @@ using namespace llvm;
 
 DGNodeSet::DGNodeSet(const DepGraph &graph, const DGNodeVecTy &dSet,
 	const ParPot &pp) : graph_(&graph), nodes_(dSet), trueDeps_(0),  antiDeps_(0),
-											outDeps_(0), cntDeps_(0) {
+											outDeps_(0), cntDeps_(0), domDeps_(0) {
   std::vector<double> times;
 
   // compare dependencies pairwise
@@ -94,20 +94,6 @@ bool DGNodeSet::compare(const DGNodeSet *lhs, const DGNodeSet *rhs) {
   // compute weighted savings for comparing
   valL = exp (-(valL / 10)) * lhs->maxSaving_;
   valR = exp (-(valR / 10)) * rhs->maxSaving_;
-//
-//  errs() << "left: ";
-//  for (DGNodeSet::DGNodeVecTy::const_iterator iNode = lhs->begin(),
-//					eNode = lhs->end(); iNode != eNode; ++iNode) {
-//  	CallSite cs((*iNode)->getInstruction());
-//    errs() << cs.getCalledFunction()->getName() << " - ";
-//  }
-//  errs() << "\nright: ";
-//  for (DGNodeSet::DGNodeVecTy::const_iterator iNode = rhs->begin(),
-//					eNode = rhs->end(); iNode != eNode; ++iNode) {
-//  	CallSite cs((*iNode)->getInstruction());
-//    errs() << cs.getCalledFunction()->getName() << " - ";
-//  }
-//  errs() << "   -> " << valL << " : " << valR << "\n";
 
   return (valL > valR);
 }
