@@ -131,8 +131,9 @@ namespace {
             ArgModRefResult res = getModRefForArg(*fA, &*it);
             if (res & Mod) {
               Value *arg = iA->getOperand(it->getArgNo()); //op(0)=function itself
-              if (checkDefUse(arg, &*iB, 0))
-              	errs() << "   control dep for " << *arg << " from " << parent->getName() << "\n";
+              if (checkDefUse(arg, &*iB, 0, false))
+              	errs() << "   control dep for " << *arg
+											 << " from " << parent->getName() << "\n";
                 dgIt->second->addDependence(iA, iB, ControlDependence,
                                           arg->getName(), "-");
             }
@@ -148,7 +149,7 @@ namespace {
       if (invert) analyzeCorrelation (parent, iB, iA);
     }
 
-    bool checkDefUse(Value *val, Instruction *iB, int level) {
+    bool checkDefUse(Value *val, Instruction *iB, int level, bool phiVisited) {
     	errs() << "-value: " << *val << " at level: " << level << "\n";
 
       static std::set<Value *> visitedVals;
@@ -166,13 +167,13 @@ namespace {
 
          // correlation found
          if (inst == iB)
-           return true;
+           return phiVisited;
       }
 
       // consider store instructions
       if (StoreInst *sInst = dyn_cast<StoreInst>(&*val)) {
-        if (checkDefUse(&*sInst->getPointerOperand(), iB, level + 1))
-          return true;
+        if (checkDefUse(&*sInst->getPointerOperand(), iB, level + 1, phiVisited))
+          return phiVisited;
       }
 
       // consider branch instructions
@@ -184,12 +185,12 @@ namespace {
 
             // consider store instructions within branchens
             if (StoreInst *sInst = dyn_cast<StoreInst>(&*it))
-              if (checkDefUse(&*sInst, iB, level + 1))
+              if (checkDefUse(&*sInst, iB, level + 1, true))
                 return true;
 
             // consider PHINodes within branches
             if (PHINode *phi = dyn_cast<PHINode>(&*it))
-              if (checkDefUse(&*phi, iB, level + 1))
+              if (checkDefUse(&*phi, iB, level + 1, true))
                 return true;
           }
         }
@@ -198,7 +199,7 @@ namespace {
       // consider phi instructions
       if (PHINode *phi = dyn_cast<PHINode>(val)) {
       	for (int i=0; i<phi->getNumIncomingValues(); ++i) {
-      		if (checkDefUse(phi->getIncomingValue(i), iB, level + 1))
+      		if (checkDefUse(phi->getIncomingValue(i), iB, level + 1, true))
       			return true;
       	}
       }
@@ -207,7 +208,7 @@ namespace {
       for (Value::use_iterator iUse = val->use_begin(), eUse = val->use_end();
             iUse != eUse; ++iUse) {
 
-        if (checkDefUse(*iUse, iB, level + 1))
+        if (checkDefUse(*iUse, iB, level + 1, phiVisited))
           return true;
       }
 

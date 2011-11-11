@@ -52,8 +52,8 @@ public:
   static const int TRUE_FACTOR = 2;
   static const int ANTI_FACTOR = 1;
   static const int OUT_FACTOR = 1;
-  static const int CNT_FACTOR = 3;
-  static const int DOM_FACTOR = 5;
+  static const int CNT_FACTOR = 2;
+  static const int DOM_FACTOR = 2;
 
   // types
   typedef std::vector<DepGraphNode *> DGNodeVecTy;
@@ -134,7 +134,7 @@ private:
   void analyzeDependencies(Function*);
 
   /// check if the definition of a value reaches an instruction recursively.
-  bool checkDefUse(Value*, Instruction*, int);
+  bool checkDefUse(Value*, Instruction*, int, bool, bool);
 
   /// check every dependence (read or write) of a given function to globals
   void checkGlobalDependencies(Function *func);
