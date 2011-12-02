@@ -16,12 +16,10 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
 
   /* declarations */
   fEdgeT *pEdge, *pTmpEdge;
-  fListNodeT *pLNode;
   fNodeT *pNode;
   if (!g->pStartNode) {
-
-    if (strcmp(name, "main") != 0)
-      return;
+  	assert(strcmp(name, "main") == 0
+						&& "Error! Program has no main function!");
 
     /* create start node */
     g->pStartNode = (fNodeT *) malloc(sizeof(fNodeT));
@@ -33,31 +31,28 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     g->pStartNode->exTime = PAPI_get_real_cyc();
     g->pStartNode->tmpTime = 0;
     g->pStartNode->profiling = true;
+    g->pStartNode->pParent = NULL;
 
     /* create first list node */
-    g->pCurrentLNode = (fListNodeT *) malloc(sizeof(fListNodeT));
-    g->pCurrentLNode->pNode = g->pStartNode;
-    g->pCurrentLNode->pParent = NULL;
+    g->pCurrentNode = g->pStartNode;
   } else {
-    if (g->pCurrentLNode)
-    if (g->pStartNode)
+  	assert(g->pCurrentNode && g->pStartNode
+						&& "Error! Inconsistent graph state");
+
     /* check if node already exist */
-    pTmpEdge = g->pStartNode->pEdges;
+    pTmpEdge = g->pCurrentNode->pEdges;
     while (pTmpEdge != NULL) {
       if (pTmpEdge->pNodeTo->num == num) {
         pTmpEdge->pNodeTo->count++;
         pTmpEdge->pNodeTo->exTime = PAPI_get_real_cyc();
         pTmpEdge->pNodeTo->profiling = true;
-        pLNode = (fListNodeT *) malloc(sizeof(fListNodeT));
-        pLNode->pNode = pTmpEdge->pNodeTo;
-        pLNode->pParent = g->pCurrentLNode;
-        g->pCurrentLNode = pLNode;
-        return;
+        g->pCurrentNode = pTmpEdge->pNodeTo;
+        return; /* prohibit more than one analysis per node */
       }
       pTmpEdge = pTmpEdge->pNext;
     }
 
-    /* create new node */
+    /* node doesn't exist => create new node */
     pNode = (fNodeT *) malloc(sizeof(fNodeT));
     pNode->pName = name;
     pNode->num = num;
@@ -67,32 +62,34 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     pNode->tmpTime = 0;
     pNode->profiling = true;
     pNode->pEdges = NULL;
+    pNode->pParent = g->pCurrentNode;
 
     /* add new edge */
     pEdge = (fEdgeT *) malloc(sizeof(fEdgeT));
-    /*pEdge->pNodeFrom = g->pCurrentLNode->pNode;*/
     pEdge->pNodeTo = pNode;
     pEdge->pNext = NULL;
-    pTmpEdge = g->pCurrentLNode->pNode->pEdges;
+
+    pTmpEdge = g->pCurrentNode->pEdges;
+    /* insert edge into the correct position of parent's edge-list  */
     if (pTmpEdge == NULL) {
-      g->pCurrentLNode->pNode->pEdges = pEdge;
+      g->pCurrentNode->pEdges = pEdge;
     } else {
       while(pTmpEdge->pNext != NULL)
         pTmpEdge = pTmpEdge->pNext;
       pTmpEdge->pNext = pEdge;
     }
 
-    /* add new list node */
-    pLNode = (fListNodeT *) malloc(sizeof(fListNodeT));
-    pLNode->pNode = pNode;
-    pLNode->pParent = g->pCurrentLNode;
-    g->pCurrentLNode = pLNode;
+    /* set current node further */
+    g->pCurrentNode = pNode;
   }
 }
 
+/*
+ * changeCurrentFunctionName changes the name of the current node.
+ */
 void changeCurrentFunctionName(fGraphT* g, char* name) {
-  if (g->pCurrentLNode)
-    g->pCurrentLNode->pNode->pName = name;
+	assert (g->pCurrentNode && "Error! No Function was called before!");
+  g->pCurrentNode->pName = name;
 }
 
 /*
@@ -101,21 +98,38 @@ void changeCurrentFunctionName(fGraphT* g, char* name) {
 void leaveNode(fGraphT* g, unsigned num) {
 
   /* declarations */
-  fListNodeT* tmp;
+  fEdgeT* tmpEdge;
 
-  if (!g->pStartNode) return;
-  assert(g->pCurrentLNode->pNode->num == num
-      && "Wrong function no in stack!");
+  assert(g->pStartNode && "Error! Inconsistent call graph detected!");
+
+  /* check if node with given number is still in list */
+  if (g->pCurrentNode->num != num) {
+		tmpEdge = g->pCurrentNode->pParent->pEdges;
+ 		while (tmpEdge->pNodeTo->num != num) {
+ 			if (tmpEdge->pNext)
+ 				tmpEdge = tmpEdge->pNext;
+ 			else {
+ 				assert (tmpEdge->pNodeTo != g->pStartNode
+ 								&& "Error! Node was already deleted => Graph inconsistent!");
+ 				tmpEdge = tmpEdge->pNodeTo->pParent->pEdges;
+ 			}
+ 		}
+ 	}
 
   /* calculate correct time */
-  g->pCurrentLNode->pNode->tmpTime += PAPI_get_real_cyc() -
-                                    g->pCurrentLNode->pNode->exTime;
-  g->pCurrentLNode->pNode->exTime = g->pCurrentLNode->pNode->tmpTime;
-  g->pCurrentLNode->pNode->profiling = false;
+  g->pCurrentNode->tmpTime += PAPI_get_real_cyc() - g->pCurrentNode->exTime;
+  g->pCurrentNode->exTime = g->pCurrentNode->tmpTime;
+  g->pCurrentNode->profiling = false;
 
-  tmp = g->pCurrentLNode;
-  g->pCurrentLNode = g->pCurrentLNode->pParent;
-  free (tmp);
+  g->pCurrentNode = g->pCurrentNode->pParent;
+
+//  /* free node with corresponding edges */
+//  while (tmpEdge) {
+//  	tmpEdge2Free = tmpEdge;
+//  	tmpEdge = tmpEdge->pNext;
+//  	free(tmpEdge2Free);
+//  }
+//  free (tmpNode);
 }
 
 void writeNode(FILE *outFile, fNodeT* pNode, fNodeT* pParent) {
