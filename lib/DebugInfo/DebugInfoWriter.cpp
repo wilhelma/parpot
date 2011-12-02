@@ -68,7 +68,8 @@ bool DebugInfoWriter::runOnModule(Module &M) {
 		for (inst_iterator i = inst_begin(f), ie = inst_end(f); i != ie; ++i) {
 			if (isa<CallInst>(&*i) || isa<InvokeInst>(&*i)) {
 			  CallSite cs(&*i);
-        if (cs.getCalledFunction()->getName() == "llvm.dbg.declare")
+        if (cs.getCalledFunction() &&
+        		cs.getCalledFunction()->getName() == "llvm.dbg.declare")
           continue;
 
 			  if (MDNode *N = i->getMetadata("dbg")) {

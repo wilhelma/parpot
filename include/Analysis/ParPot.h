@@ -167,7 +167,8 @@ private:
 
   /// returns the mod/ref behavior of a callsite concerning a specific argument
   ArgModRefResult getModRefForDSNode(const CallSite&,
-																		 const DSNodeHandle&) const;
+																		 const DSNodeHandle&,
+																		 const DSGraph*) const;
 
 public:
   static char ID; // Class identification, replacement for typeinfo

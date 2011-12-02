@@ -21,7 +21,6 @@
 #include "DebugInfo/Allocation.h"
 #include "DebugInfo/GlobalVar.h"
 #include "llvm/LLVMContext.h"
-#include <set>
 
 #include "llvm/Support/raw_ostream.h"
 
@@ -112,6 +111,8 @@ void ParPot::analyzeDependencies(Function *parent) {
       DepGraphNode *node = graph->getNode(&*it, /*create if missing*/ true);
       nodes.push_back(std::make_pair(node, tmp));
     }
+
+
 
   for (DGVectTy::iterator iF = nodes.begin(), eF = nodes.end(); iF!=eF; iF++) {
     for (DGVectTy::reverse_iterator iR = nodes.rbegin();
@@ -210,18 +211,19 @@ void ParPot::analyzeCorrelation(Function *parent,
          (isa<CallInst>(iA) || isa<InvokeInst>(iA)) &&
          "Error, instructions are no function calls!");
 
+  ArgModRefResult res;
   DepGraphMapTy::iterator dgIt = fDepGraphs_.find(parent);
   Function *fA = getFunctionPtr(CallSite(iA));
-  if (pDSA_->hasDSGraph(*fA)) {
+
+  if (fA && pDSA_->hasDSGraph(*fA)) {
     // look for pointer/reference parameters
     for (Function::arg_iterator it = fA->arg_begin(), e = fA->arg_end();
           it != e; ++it) {
       if (it->getType()->isPointerTy()) {
-      	ArgModRefResult res = getModRefForArg(&*fA, &*it);
-        if (res & Mod) {
+      	res = getModRefForArg(fA, &*it);
+      	if (res & Mod) {
           Value *arg = iA->getOperand(it->getArgNo());
-          errs() << "... Analysis for " << *arg << " in method " << *iB << "\n";
-          bool tmp = (fA->getArgumentList().size() == 5);
+          bool tmp = false; // (fA->getArgumentList().size() == 5);
           if (checkDefUse(arg, &*iB, 0, false, tmp)) {
             dgIt->second->addDependence(iA, iB, ControlDependence,
                                       arg->getName(), "-");
@@ -237,7 +239,9 @@ void ParPot::analyzeCorrelation(Function *parent,
   }
 
   // analyze the inverted order
-  if (invert) analyzeCorrelation (parent, iB, iA);
+  //errs() << "1\n";
+  //if (invert) analyzeCorrelation (parent, iB, iA);
+  //errs() << "2\n";
 }
 
 void ParPot::analyzeAliasAnalysis(Function *parent,
@@ -248,51 +252,50 @@ void ParPot::analyzeAliasAnalysis(Function *parent,
   Function *fA = getFunctionPtr(csA);
   Function *fB = getFunctionPtr(csB);
 
+  if (!fA || !fB )
+  	return;
+
+  typedef std::map<DSNodeHandle, llvm::StringRef> nHMapTy;
+  nHMapTy nhA, nhB;
   DSGraph *pDSG = pDSA_->getDSGraph(*parent);
 
-  // get DSCallSites and DSGraph for both functions
-  DSCallSite dscA = pDSG->getDSCallSiteForCallSite(csA);
-  DSCallSite dscB = pDSG->getDSCallSiteForCallSite(csB);
-  DSGraph *pDSGA = pDSA_->getDSGraph(*fA);
-  DSGraph *pDSGB = pDSA_->getDSGraph(*fB);
+  // calculate node handles for call instruction A
+	CallSite::arg_iterator iArg = csA.arg_begin(), eArg = csA.arg_end();
+	for (int i=0; iArg != eArg; ++iArg, ++i) {
+		if (iArg->get()->getType()->isPointerTy()) {
+			nhA[pDSG->getNodeForValue(iArg->get())] = iArg->get()->getName();
+		}
+	}
 
-  // compute uses of both functions
-  DSGraph::NodeMapTy nodeMapA, nodeMapB;
-  pDSG->computeCalleeCallerMapping(dscA, *fA, *pDSGA, nodeMapA);
-  pDSG->computeCalleeCallerMapping(dscB, *fB, *pDSGB, nodeMapB);
+  // calculate node handles for call instruction B
+	iArg = csB.arg_begin(), eArg = csB.arg_end();
+	for (int i=0; iArg != eArg; ++iArg, ++i) {
+		if (iArg->get()->getType()->isPointerTy()) {
+			nhB[pDSG->getNodeForValue(iArg->get())] = iArg->get()->getName();
+		}
+	}
 
   // get dependence graph
   DepGraphMapTy::iterator dgIt = fDepGraphs_.find(parent);
   assert(dgIt != fDepGraphs_.end() && "No dependence graph found for function");
 
-  // get scalar maps
-  DSGraph::ScalarMapTy &mapA = pDSGA->getScalarMap();
-  DSGraph::ScalarMapTy &mapB = pDSGB->getScalarMap();
-
-  // compare pointer arguments
-  for (DSGraph::NodeMapTy::iterator itA = nodeMapA.begin(),
-        eA = nodeMapA.end(); itA != eA; ++itA)
-    for (DSGraph::NodeMapTy::iterator itB = nodeMapB.begin(),
-          eB = nodeMapB.end(); itB != eB; ++itB)
-      if (itA->second == itB->second) {
-
-        // get object names
+  // compute uses of both functions
+  DSGraph::NodeMapTy nodeMap;
+  nHMapTy::iterator iSetA = nhA.begin(), eSetA = nhA.end();
+  for (; iSetA != eSetA; ++iSetA) {
+  	nHMapTy::iterator iSetB = nhB.begin(), eSetB = nhB.end();
+  	for (; iSetB != eSetB; ++iSetB) {
+  		pDSG->computeNodeMapping(iSetA->first, iSetB->first, nodeMap, false);
+  		if (!nodeMap.empty()) {
         std::string objA = NoObj, objB = NoObj;
-        for (DSGraph::ScalarMapTy::iterator it = mapA.begin(), e = mapA.end();
-              it != e; ++it) {
-          if (it->second.getNode() == itA->first && objA == NoObj) {
-            objA = it->first->getName();
-          }
-        }
+        objA = iSetA->second;
+        objB = iSetB->second;
 
-        for (DSGraph::ScalarMapTy::iterator it = mapB.begin(), e = mapB.end();
-              it != e && objB == NoObj; ++it) {
-          if (it->second.getNode() == itB->first)
-            objB = it->first->getName();
-        }
-
-        ArgModRefResult resA = getModRefForDSNode(csA, itA->second);
-        ArgModRefResult resB = getModRefForDSNode(csB, itB->second);
+        if (csA.getCalledFunction() && csB.getCalledFunction())
+        	errs() << "check for " << csA.getCalledFunction()->getName() <<
+  							" and " << csB.getCalledFunction()->getName() << "\n";
+  			ArgModRefResult resA = getModRefForDSNode(csA, iSetA->first, pDSG);
+  			ArgModRefResult resB = getModRefForDSNode(csB, iSetB->first, pDSG);
 
         // true (and anti-) dependence (A -> B)
         if ((resA & Mod) && (resB & Ref))
@@ -300,7 +303,6 @@ void ParPot::analyzeAliasAnalysis(Function *parent,
         		dgIt->second->addDependence(iA, iB, TrueDependence, objA, objB);
           else
             dgIt->second->addDependence(iB, iA, AntiDependence, objB, objA);
-
         // true (and anti-) dependence (B -> A)
         else if ((resA & Ref) && (resB & Mod))
           if (iA < iB)
@@ -311,7 +313,9 @@ void ParPot::analyzeAliasAnalysis(Function *parent,
         // output dependence
         else if ((resA & Mod) && (resB & Mod))
           dgIt->second->addDependence(iA, iB, OutputDependence, objA, objB);
-      }
+  		}
+		}
+	}
 }
 
 void ParPot::analyzeUseOfGlobals(Function *parent,
@@ -575,7 +579,6 @@ ArgModRefResult ParPot::getModRefForArg(const Function *pFunc,
 	typedef std::vector<const Use*> UseVecTy;
 
 	static  ArgResSetTy visited;
-
 	assert(pArg->getType()->isPointerTy() && "Capture is for pointers only!");
 
 	// check if argument has already visited => return old result
@@ -603,55 +606,68 @@ ArgModRefResult ParPot::getModRefForArg(const Function *pFunc,
 
 /// analyzes how the instruction accesses the given value
 ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) const {
-	ArgModRefResult result = NoModRef;
+
+	typedef std::map<Instruction*, ArgModRefResult> MRInstMapTy;
+	static MRInstMapTy visited;
+	MRInstMapTy::iterator it = visited.find(I);
+	if (it != visited.end())
+		return it->second;
+
+
+	visited[I] = NoModRef;
 
   switch (I->getOpcode()) {
   case Instruction::Call:
   case Instruction::Invoke: {
     CallSite cs(I);
+    Function *f = getFunctionPtr(cs);
     // Not captured if the callee is readonly, doesn't return a copy through
     // its return value and doesn't unwind (a readonly function can leak bits
     // by throwing an exception or not depending on the input value).
-    if (cs.onlyReadsMemory() && cs.doesNotThrow()
-														 && I->getType()->isVoidTy())
-      break;
+    if (!f || (cs.onlyReadsMemory()
+								&& cs.doesNotThrow()
+								&& I->getType()->isVoidTy())) {
+      errs() << *I << "\n";
+    	break;
+    }
 
     // get called function as well as the corresponding argument in order
     // to call this analysis-procedure recursively
-    Function::arg_iterator iFArg = cs.getCalledFunction()->arg_begin();
+    Function::arg_iterator iFArg = f->arg_begin();
     CallSite::arg_iterator iArg = cs.arg_begin(), eArg = cs.arg_end();
     for (; iArg != eArg; ++iArg, ++iFArg) {
 			if (iArg->get() == pArg) {
-        result	|= getModRefForArg(cs.getCalledFunction(), &*iFArg);
+				visited[I]	|= getModRefForArg(f, &*iFArg);
 			}
     }
     break;
   }
   case Instruction::Load:
   	if (pArg == I->getOperand(0))
-  		result |= Ref;
+  		visited[I] |= Ref;
   	break;
   case Instruction::Ret:
-    	result |= Ref;
+  	visited[I] |= Ref;
     break;
   case Instruction::Store:
     if (pArg == I->getOperand(1))
-    	result |= Mod;
+    	visited[I] |= Mod;
     break;
   case Instruction::GetElementPtr:
   case Instruction::BitCast:
   case Instruction::PHI:
   case Instruction::Select:
     // The original value is not touched via this if the new value isn't.
+  	errs() << "... " << *I << "\n";
     for (Instruction::use_iterator UI = I->use_begin(), UE = I->use_end();
          UI != UE; ++UI) {
     	Instruction* inst = (Instruction*)*UI;
-    	result |= getModRefForInst(inst, (Value*)I);
+    	visited[I] |= getModRefForInst(inst, (Value*)I);
     }
     break;
   case Instruction::ICmp:
     // Don't count comparisons of a no-alias return value against null as
-    // captures. This allows us to ignore comparisons of malloc results
+    // captures. This allows us to ignore comparisons of malloc *instPairSet[pair]s
     // with null, for example.
     if (isNoAliasCall(pArg->stripPointerCasts()))
       if (ConstantPointerNull *CPN =
@@ -660,7 +676,7 @@ ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) cons
           break;
     // Otherwise, be conservative. There are crazy ways to capture pointers
     // using comparisons.
-    result |= Ref; errs() << "  -> ohoo\n";
+    visited[I] |= Ref; errs() << "  -> ohoo\n";
     break;
   default:
   	errs() << "Instruction has not been analyzed: " << *I << "\n";
@@ -668,25 +684,35 @@ ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) cons
 			break;
   }
   // All uses examined - not captured.
-  return result;
+
+  return visited[I];
 }
 
 ArgModRefResult ParPot::getModRefForDSNode(const CallSite &cS,
-																					 const DSNodeHandle &nH) const {
+																					 const DSNodeHandle &nH,
+																					 const DSGraph *parentGraph) const {
 	ArgModRefResult result = NoModRef;
 
 	//if (nH.getNode()->isReadNode()) result |= Ref;
 	//if (nH.getNode()->isModifiedNode()) result |= Mod;
 
+
+	Function *f = getFunctionPtr(cS);
+	if (!f) return ModRef; // be conservative
+
 	CallSite::arg_iterator iArg = cS.arg_begin(), eArg = cS.arg_end();
 	for (int i=0; iArg != eArg; ++iArg, ++i)
 		if (iArg->get()->getType()->isPointerTy()) {
-			const DSNodeHandle n =
-				nH.getNode()->getParentGraph()->getNodeForValue(iArg->get()).getNode();
-			if (n == nH) {
-				Function::arg_iterator iFArg = cS.getCalledFunction()->arg_begin();
+			DSNodeHandle n = parentGraph->getNodeForValue(iArg->get());
+			DSGraph::NodeMapTy nodeMap;
+			parentGraph->computeNodeMapping(nH, n, nodeMap, false);
+			if (!nodeMap.empty()) {
+				Function::arg_iterator iFArg = f->arg_begin();
 				for(int j=0; j < i; ++iFArg, ++j) { }
-				result = this->getModRefForArg(cS.getCalledFunction(), &*iFArg);
+				errs() << "test " << f->getName() << " for "
+							 << iFArg->getName();
+				result = this->getModRefForArg(f, &*iFArg);
+				errs() << " result: " << result << "\n";
 				break;
 			}
 		}

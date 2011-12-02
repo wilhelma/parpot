@@ -143,6 +143,24 @@ void llvm::addNotifyCall(CallSite *cs, BasicBlock *bb, const char *fnNameBefore,
 
 void llvm::addNotifyFnCalled(Function *fn, const char *fnName,
     GlobalVariable *gv) {
+
+	// check whether function is a constructor == ignore
+	GlobalVariable *ctors = fn->getParent()->getNamedGlobal("llvm.global_ctors");
+	if (ctors) {
+		ConstantArray *CA = dyn_cast<ConstantArray>(ctors->getInitializer());
+		if (CA) {
+			for (User::op_iterator i = CA->op_begin(), e = CA->op_end(); i != e; ++i){
+				ConstantStruct *CS = dyn_cast<ConstantStruct>(*i);
+				if (CS == 0) continue;
+				// Must have a function or null ptr.
+				if (Function *fun = dyn_cast<Function>(CS->getOperand(1))) {
+					if (fun == fn)
+						return;
+				}
+			}
+		}
+  }
+
   LLVMContext &context = fn->getContext();
   BasicBlock::iterator insertPos = fn->begin()->getFirstNonPHI();
 

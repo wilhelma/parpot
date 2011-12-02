@@ -17,6 +17,7 @@ typedef struct fNode {
   double exTime;
   double tmpTime;
   bool profiling;
+  struct fNode *pParent;
   struct fEdge *pEdges;
 } fNodeT;
 
@@ -29,19 +30,11 @@ typedef struct fEdge {
 } fEdgeT;
 
 /*
- * a linked list (bottom-up)
- */
-typedef struct fListNode {
-  fNodeT *pNode;
-  struct fListNode *pParent;
-} fListNodeT;
-
-/*
  * a graph structure
  */
 typedef struct fGraph {
   fNodeT *pStartNode;
-  fListNodeT *pCurrentLNode;
+  fNodeT *pCurrentNode;
 } fGraphT;
 
 /*
