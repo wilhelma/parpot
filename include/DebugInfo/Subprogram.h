@@ -56,7 +56,8 @@ namespace llvm {
 	public:
 		CompSubprogram(const std::string &comp): cString_(comp) { }
 		bool operator()(const Subprogram *pSProg) {
-			return (pSProg->getName() == cString_);
+			return (pSProg->getName() == cString_ ||
+							pSProg->getDisplayName() == cString_);
 		}
 	};
 }

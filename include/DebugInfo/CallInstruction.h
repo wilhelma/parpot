@@ -14,27 +14,35 @@
 #include "DebugInfo.h"
 #include "llvm/Instruction.h"
 #include <string>
+#include <map>
 
 namespace llvm {
 
   /// The CallInstruction class holds debug information for call instructions.
 	class CallInstruction: public DebugInfo {
+	public:
+		typedef std::map<unsigned, Instruction*> LineInstMapTy;
+
+	private:
 		// attributes
 		unsigned int instNo_;
 		unsigned int lineNo_;
-		const Instruction *inst_;
+		std::string fileName_;
+		Instruction *inst_;
 
 		// prohibit copy constructor
 		CallInstruction(const CallInstruction&);
 		CallInstruction& operator=(const CallInstruction*);
 	public:
-		CallInstruction(unsigned int instNo,unsigned int lineNo):
-		  DebugInfo(TCallInstruction), instNo_(instNo), lineNo_(lineNo) { }
-		CallInstruction(std::string, const Instruction*);
+		CallInstruction(unsigned int instNo,unsigned int lineNo, std::string file):
+		  DebugInfo(TCallInstruction), instNo_(instNo), lineNo_(lineNo),
+		  fileName_(file){ }
+		CallInstruction(std::string, LineInstMapTy*);
 		virtual bool store(const char *filename) const;
 		unsigned int getInstNo() const { return instNo_; }
 		unsigned int getLineNo() const { return lineNo_;	}
-		const Instruction* getInstruction() const { return inst_; }
+		std::string getFile() const { return fileName_; }
+		Instruction* getInstruction() const { return inst_; }
 	};
 
   /// The CompCallInstruction functor compares CallInstruction instances with

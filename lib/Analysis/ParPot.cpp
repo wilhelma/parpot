@@ -144,15 +144,15 @@ void ParPot::analyzeDependencies(Function *parent) {
 }
 
 bool ParPot::checkDefUse(Value *val, Instruction *iB,
-												 int level, bool phiVisited, bool print=false) {
+												 int level, bool phiVisited, bool print) {
 	if (print)
-	errs() << "-value: " << *val << " at level: " << level << "\n";
+		errs() << "-value: " << *val << " at level: " << level << "\n";
 
   static std::set<Value *> visitedVals;
   if (!level)
     visitedVals.clear();
 
-  // ignore alredy visited values
+  // ignore already visited values
   if (visitedVals.find(val) != visitedVals.end())
     return false;
   visitedVals.insert(val);
@@ -173,24 +173,9 @@ bool ParPot::checkDefUse(Value *val, Instruction *iB,
   }
 
   // consider branch instructions
-  if (BranchInst *bInst = dyn_cast<BranchInst>(&*val)) {
-    for (unsigned i=0; i<bInst->getNumSuccessors(); ++i) {
-      BasicBlock *bb = bInst->getSuccessor(i);
-      for (BasicBlock::iterator it = bb->begin(), e = bb->end();
-            it != e; ++it) {
-
-        // consider store instructions within branchens
-        if (StoreInst *sInst = dyn_cast<StoreInst>(&*it))
-          if (checkDefUse(&*sInst, iB, level + 1, true, print))
-            return true;
-
-        // consider PHINodes within branches
-        if (PHINode *phi = dyn_cast<PHINode>(&*it))
-          if (checkDefUse(&*phi, iB, level + 1, true, print))
-            return true;
-      }
-    }
-  }
+  if (BranchInst *bInst = dyn_cast<BranchInst>(&*val))
+  	if (checkBranchDefUse(bInst, iB, level + 1, 0, print))
+  		return true;
 
   // check every use of the value recursively
   for (Value::use_iterator iUse = val->use_begin(), eUse = val->use_end();
@@ -203,6 +188,45 @@ bool ParPot::checkDefUse(Value *val, Instruction *iB,
   return false;
 }
 
+bool ParPot::checkBranchDefUse(BranchInst *bInst, Instruction *iB,
+															 int level, int branchLevel, bool print) {
+  static std::set<BranchInst *> visitedBranches;
+  if (!branchLevel)
+    visitedBranches.clear();
+
+  // ignore already visited values
+  if (visitedBranches.find(bInst) != visitedBranches.end())
+    return false;
+  visitedBranches.insert(bInst);
+
+  for (unsigned i=0; i<bInst->getNumSuccessors(); ++i) {
+    BasicBlock *bb = bInst->getSuccessor(i);
+    for (BasicBlock::iterator it = bb->begin(), e = bb->end();
+          it != e; ++it) {
+
+      // consider store instructions within branchens
+      if (StoreInst *sInst = dyn_cast<StoreInst>(&*it))
+        if (checkDefUse(&*sInst, iB, level + 1, true, print))
+          return true;
+
+      // consider PHINodes within branches
+      if (PHINode *phi = dyn_cast<PHINode>(&*it))
+        if (checkDefUse(&*phi, iB, level + 1, true, print))
+          return true;
+
+      // check if branch is correlated with function B
+      if (isa<CallInst>(&*it) || isa<InvokeInst>(&*it))
+      	if (&*it == iB)
+      		return true;
+
+      // consider new branch instructions within branches
+      if (BranchInst *bInst = dyn_cast<BranchInst>(&*it))
+      	return checkBranchDefUse(bInst, iB, level+1, branchLevel + 1, print);
+    }
+  }
+  return false;
+}
+
 void ParPot::analyzeCorrelation(Function *parent,
     Instruction *iA, Instruction *iB, bool invert) {
 
@@ -211,17 +235,15 @@ void ParPot::analyzeCorrelation(Function *parent,
          (isa<CallInst>(iA) || isa<InvokeInst>(iA)) &&
          "Error, instructions are no function calls!");
 
-  ArgModRefResult res;
   DepGraphMapTy::iterator dgIt = fDepGraphs_.find(parent);
   Function *fA = getFunctionPtr(CallSite(iA));
 
-  if (fA && pDSA_->hasDSGraph(*fA)) {
-    // look for pointer/reference parameters
-    for (Function::arg_iterator it = fA->arg_begin(), e = fA->arg_end();
-          it != e; ++it) {
+  if (fA) {
+    // consider pointer/reference parameters
+  	Function::arg_iterator it = fA->arg_begin(), e = fA->arg_end();
+  	for (; it != e; ++it) {
       if (it->getType()->isPointerTy()) {
-      	res = getModRefForArg(fA, &*it);
-      	if (res & Mod) {
+      	if (getModRefForArg(fA, &*it) & Mod) {
           Value *arg = iA->getOperand(it->getArgNo());
           bool tmp = false; // (fA->getArgumentList().size() == 5);
           if (checkDefUse(arg, &*iB, 0, false, tmp)) {
@@ -231,13 +253,24 @@ void ParPot::analyzeCorrelation(Function *parent,
         }
       }
     }
-  }
 
-  // look for use of call instruction itself
-  if (checkDefUse(&*iA, &*iB, 0, false)) {
-    //dgIt->second->addDependence(iA, iB, ControlDependence, NoObj, NoObj);
-  }
+  	// consider modified globals
+  	checkGlobalDependencies(fA);
+    GlobAccMapTy &gMapA = fGlobs_[fA];
+    for (GlobAccMapTy::iterator iGA = gMapA.begin(), eGA = gMapA.end();
+          iGA != eGA; ++iGA) {
+    	if (iGA->second == Change &&
+    			checkDefUse(iGA->first, &*iB, 0, false, false)) {
+        dgIt->second->addDependence(iA, iB, ControlDependence,
+                                  iGA->first->getName(), "-");
+      }
+    }
 
+		// consider instruction itself (control dependence caused by a return value)
+		if (checkDefUse(&*iA, &*iB, 0, true, true)) {
+			dgIt->second->addDependence(iA, iB, ControlDependence, NoObj, NoObj);
+		}
+  }
   // analyze the inverted order
   //errs() << "1\n";
   //if (invert) analyzeCorrelation (parent, iB, iA);
@@ -285,34 +318,31 @@ void ParPot::analyzeAliasAnalysis(Function *parent,
   for (; iSetA != eSetA; ++iSetA) {
   	nHMapTy::iterator iSetB = nhB.begin(), eSetB = nhB.end();
   	for (; iSetB != eSetB; ++iSetB) {
-  		pDSG->computeNodeMapping(iSetA->first, iSetB->first, nodeMap, false);
-  		if (!nodeMap.empty()) {
+  		//pDSG->computeNodeMapping(iSetA->first, iSetB->first, nodeMap, false);
+  		if (iSetA->first.getNode() == iSetB->first.getNode()){//!nodeMap.empty()){
         std::string objA = NoObj, objB = NoObj;
         objA = iSetA->second;
         objB = iSetB->second;
 
-        if (csA.getCalledFunction() && csB.getCalledFunction())
-        	errs() << "check for " << csA.getCalledFunction()->getName() <<
-  							" and " << csB.getCalledFunction()->getName() << "\n";
-  			ArgModRefResult resA = getModRefForDSNode(csA, iSetA->first, pDSG);
-  			ArgModRefResult resB = getModRefForDSNode(csB, iSetB->first, pDSG);
+				ArgModRefResult resA = getModRefForDSNode(csA, iSetA->first, pDSG);
+				ArgModRefResult resB = getModRefForDSNode(csB, iSetB->first, pDSG);
 
-        // true (and anti-) dependence (A -> B)
-        if ((resA & Mod) && (resB & Ref))
-        	if (iA < iB)
-        		dgIt->second->addDependence(iA, iB, TrueDependence, objA, objB);
-          else
-            dgIt->second->addDependence(iB, iA, AntiDependence, objB, objA);
-        // true (and anti-) dependence (B -> A)
-        else if ((resA & Ref) && (resB & Mod))
-          if (iA < iB)
-            dgIt->second->addDependence(iA, iB, AntiDependence, objA, objB);
-          else
-            dgIt->second->addDependence(iB, iA, TrueDependence, objB, objA);
+				// true (and anti-) dependence (A -> B)
+				if ((resA & Mod) && (resB & Ref))
+					if (iA < iB)
+						dgIt->second->addDependence(iA, iB, TrueDependence, objA, objB);
+					else
+						dgIt->second->addDependence(iB, iA, AntiDependence, objB, objA);
+				// true (and anti-) dependence (B -> A)
+				else if ((resA & Ref) && (resB & Mod))
+					if (iA < iB)
+						dgIt->second->addDependence(iA, iB, AntiDependence, objA, objB);
+					else
+						dgIt->second->addDependence(iB, iA, TrueDependence, objB, objA);
 
-        // output dependence
-        else if ((resA & Mod) && (resB & Mod))
-          dgIt->second->addDependence(iA, iB, OutputDependence, objA, objB);
+				// output dependence
+				else if ((resA & Mod) && (resB & Mod))
+					dgIt->second->addDependence(iA, iB, OutputDependence, objA, objB);
   		}
 		}
 	}
@@ -448,7 +478,7 @@ void ParPot::printDepType(raw_ostream &out, unsigned char type) const {
 
 void ParPot::print(raw_ostream &out, const Module *M) const {
 
-  DebugInfoReader reader(DebugInfo::getFileName(), *M);
+  DebugInfoReader reader(DebugInfo::getFileName(), *const_cast<Module*>(M));
 
 
   out << " maintime: " << pDCG_->getTotExecutionTime() << '\n';
@@ -462,8 +492,8 @@ void ParPot::print(raw_ostream &out, const Module *M) const {
       e1 = nodeSetVec_.end(); iSet != e1; ++iSet) {
 
     // check timing
-    double minPerc=((*iSet)->getMaxSaving() / pDCG_->getTotExecutionTime()) * 100;
-    double maxPerc=((*iSet)->getMaxSaving() / pDCG_->getTotExecutionTime()) * 100;
+    double minPerc=((*iSet)->getMaxSaving() / pDCG_->getTotExecutionTime())*100;
+    double maxPerc=((*iSet)->getMaxSaving() / pDCG_->getTotExecutionTime())*100;
 
     std::stringstream ss;
     std::string sMinPerc, sMaxPerc;
@@ -501,8 +531,12 @@ void ParPot::print(raw_ostream &out, const Module *M) const {
         out << "IR<" << tmp->getName();
 
       // dump line number of instruction
-      if (reader.getCallInstruction((*iNode)->getInstruction(), iC))
-        out << "(" << (*iC)->getLineNo() << ") ";
+      if (reader.getCallInstruction((*iNode)->getInstruction(), iC)) {
+      	if (tmp->getName() == "_Z12plate_detectP5img_t") {
+      		errs() << *(*iNode)->getInstruction() << " . " << *(*iC)->getInstruction() << "\n";
+      	}
+      	out << "(" << (*iC)->getFile() << ", " << (*iC)->getLineNo() << ") ";
+      }
     }
 
 
@@ -627,7 +661,6 @@ ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) cons
     if (!f || (cs.onlyReadsMemory()
 								&& cs.doesNotThrow()
 								&& I->getType()->isVoidTy())) {
-      errs() << *I << "\n";
     	break;
     }
 
@@ -658,7 +691,6 @@ ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) cons
   case Instruction::PHI:
   case Instruction::Select:
     // The original value is not touched via this if the new value isn't.
-  	errs() << "... " << *I << "\n";
     for (Instruction::use_iterator UI = I->use_begin(), UE = I->use_end();
          UI != UE; ++UI) {
     	Instruction* inst = (Instruction*)*UI;
@@ -676,7 +708,7 @@ ArgModRefResult ParPot::getModRefForInst(Instruction *I, const Value *pArg) cons
           break;
     // Otherwise, be conservative. There are crazy ways to capture pointers
     // using comparisons.
-    visited[I] |= Ref; errs() << "  -> ohoo\n";
+    visited[I] |= Ref;
     break;
   default:
   	errs() << "Instruction has not been analyzed: " << *I << "\n";
@@ -709,10 +741,7 @@ ArgModRefResult ParPot::getModRefForDSNode(const CallSite &cS,
 			if (!nodeMap.empty()) {
 				Function::arg_iterator iFArg = f->arg_begin();
 				for(int j=0; j < i; ++iFArg, ++j) { }
-				errs() << "test " << f->getName() << " for "
-							 << iFArg->getName();
 				result = this->getModRefForArg(f, &*iFArg);
-				errs() << " result: " << result << "\n";
 				break;
 			}
 		}

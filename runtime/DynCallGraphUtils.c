@@ -8,6 +8,16 @@
 
 static unsigned nodeNo = 0;
 
+__inline__ uint64_t rdtsc() {
+  uint32_t lo, hi;
+  __asm__ __volatile__ (      // serialize
+  "xorl %%eax,%%eax \n        cpuid"
+  ::: "%rax", "%rbx", "%rcx", "%rdx");
+  /* We cannot use "=A", since this would use %rax on x86_64 and return only the lower 32bits of the TSC */
+  __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
+  return (uint64_t)hi << 32 | lo;
+}
+
 /*
  * insertNode inserts a new function node at the current (pCurrentLNode)
  * function.
@@ -28,7 +38,7 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     g->pStartNode->id = nodeNo++;
     g->pStartNode->count = 1;
     g->pStartNode->pEdges = NULL;
-    g->pStartNode->exTime = PAPI_get_real_cyc();
+    g->pStartNode->exTime = rdtsc();
     g->pStartNode->tmpTime = 0;
     g->pStartNode->profiling = true;
     g->pStartNode->pParent = NULL;
@@ -44,7 +54,7 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     while (pTmpEdge != NULL) {
       if (pTmpEdge->pNodeTo->num == num) {
         pTmpEdge->pNodeTo->count++;
-        pTmpEdge->pNodeTo->exTime = PAPI_get_real_cyc();
+        pTmpEdge->pNodeTo->exTime = rdtsc();
         pTmpEdge->pNodeTo->profiling = true;
         g->pCurrentNode = pTmpEdge->pNodeTo;
         return; /* prohibit more than one analysis per node */
@@ -58,7 +68,7 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     pNode->num = num;
     pNode->id = nodeNo++;
     pNode->count = 1;
-    pNode->exTime = PAPI_get_real_cyc();
+    pNode->exTime = rdtsc();
     pNode->tmpTime = 0;
     pNode->profiling = true;
     pNode->pEdges = NULL;
@@ -117,7 +127,7 @@ void leaveNode(fGraphT* g, unsigned num) {
  	}
 
   /* calculate correct time */
-  g->pCurrentNode->tmpTime += PAPI_get_real_cyc() - g->pCurrentNode->exTime;
+  g->pCurrentNode->tmpTime += rdtsc() - g->pCurrentNode->exTime;
   g->pCurrentNode->exTime = g->pCurrentNode->tmpTime;
   g->pCurrentNode->profiling = false;
 
@@ -138,7 +148,7 @@ void writeNode(FILE *outFile, fNodeT* pNode, fNodeT* pParent) {
 
   /* check execution time */
   if (pNode->profiling) {
-    pNode->tmpTime += PAPI_get_real_cyc() - pNode->exTime;
+    pNode->tmpTime += rdtsc() - pNode->exTime;
     pNode->exTime = pNode->tmpTime;
     pNode->profiling = false;
   }

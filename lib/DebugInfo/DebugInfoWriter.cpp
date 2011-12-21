@@ -53,7 +53,6 @@ bool DebugInfoWriter::runOnModule(Module &M) {
 	for (DebugInfoFinder::iterator it = finder->subprogram_begin(),
 			e = finder->subprogram_end(); it != e; ++it) {
 		DISubprogram dSub(*it);
-		errs() << dSub.getDirectory() << "\n";
 		Subprogram sub(dSub.getLinkageName().str(), dSub.getDisplayName().str(),
 			(std::string)(dSub.getCompileUnit().getDirectory().str() + "/" +
 			dSub.getCompileUnit().getFilename().str()), dSub.getLineNumber());
@@ -69,15 +68,17 @@ bool DebugInfoWriter::runOnModule(Module &M) {
 			if (isa<CallInst>(&*i) || isa<InvokeInst>(&*i)) {
 			  CallSite cs(&*i);
         if (cs.getCalledFunction() &&
-        		cs.getCalledFunction()->getName() == "llvm.dbg.declare")
+        		(cs.getCalledFunction()->getName() == "llvm.dbg.declare" ||
+        		 cs.getCalledFunction()->getName() == "llvm.dbg.value"))
           continue;
 
 			  if (MDNode *N = i->getMetadata("dbg")) {
 				   DILocation loc(N);
-				   CallInstruction ci(callCounter, loc.getLineNumber());
+				   CallInstruction ci(callCounter, loc.getLineNumber(),
+														  loc.getFilename());
 				   ci.store(DebugInfo::getFileName());
-				 }
-				 callCounter++;
+			  }
+				callCounter++;
 			}
 		}
 	}

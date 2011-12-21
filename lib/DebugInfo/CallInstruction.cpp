@@ -17,13 +17,15 @@ bool CallInstruction::store(const char *filename) const {
 	int ty = getDebugType();
 	file << ty << ',';					// write debugtype information
 	file << getInstNo() << ',';			// write callinstruction number
-	file << getLineNo() << ";\n";		// write line number
+	file << getLineNo() << ',';		// write line number
+	file << getFile() << ";\n"; // write corresponding file name
 	file.close();						// close file
 	return true;
 }
 
-CallInstruction::CallInstruction(std::string line, const Instruction *inst) :
-    DebugInfo(TAllocation), inst_(inst) {
+
+CallInstruction::CallInstruction(std::string line, LineInstMapTy* liMap):
+		DebugInfo(TAllocation) {
     std::istringstream sLine( line );
     std::string elem;
 
@@ -32,9 +34,17 @@ CallInstruction::CallInstruction(std::string line, const Instruction *inst) :
 
     if (!getline( sLine, elem, ',' )) // read instruction number
       DebugInfo::terminate(line);
+    int tmp;
+    std::stringstream strStream(elem);
+    strStream >> tmp;
+    inst_ = (*liMap)[tmp];
 
     if (!getline( sLine, elem, ',' )) // read line number
       DebugInfo::terminate(line);
-    std::stringstream strStream(elem);
-    strStream >> lineNo_;
+    std::stringstream strStream2(elem);
+    strStream2 >> lineNo_;
+
+    if (!getline( sLine, elem, ';' )) // read corresponding file name
+      DebugInfo::terminate(line);
+    fileName_ = elem;
 }
