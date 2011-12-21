@@ -17,16 +17,14 @@
 #include "CompileUnit.h"
 #include "GlobalVar.h"
 #include "Subprogram.h"
-#include "CallInstruction.h"
-#include <vector>
 #include <map>
-using namespace llvm;
+#include "CallInstruction.h"
 
 namespace llvm {
 
   /// The class DebugInfoReader reads a input file that contains debug
   /// information from an application compiled with the llvm framework.
-	class DebugInfoReader{
+	class DebugInfoReader {
 		// attributes
 		std::vector<Allocation*> allocations_;
 		std::vector<CompileUnit*> compileUnits_;
@@ -35,14 +33,14 @@ namespace llvm {
 		std::vector<CallInstruction*> callInstructions_;
 
 		// datastructure for call-instructions
-		std::map<unsigned, const Instruction*> lineInstructionMap_;
+		CallInstruction::LineInstMapTy lineInstructionMap_;
 
 		// prohibit copy constructor
 		DebugInfoReader(const DebugInfoReader&);
 		DebugInfoReader& operator=(const DebugInfoReader*);
 	public:
 		static char ID; // Class identification, replacement for typeinfo
-		DebugInfoReader(const char*, const Module &M);
+		DebugInfoReader(const char*, Module &M);
 
 		bool getAllocation(const std::string&,
 				std::vector<Allocation*>::const_iterator) const;

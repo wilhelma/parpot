@@ -133,8 +133,11 @@ private:
   /// analyze dependence graph of a given ParPotNode and all children
   void analyzeDependencies(Function*);
 
-  /// check if the definition of a value reaches an instruction recursively.
+  /// check if the definition of a value reaches an instruction (recursively).
   bool checkDefUse(Value*, Instruction*, int, bool, bool);
+
+  /// check if the definition of a value is used within a branch (recursively).
+  bool checkBranchDefUse(BranchInst*, Instruction*, int, int, bool);
 
   /// check every dependence (read or write) of a given function to globals
   void checkGlobalDependencies(Function *func);

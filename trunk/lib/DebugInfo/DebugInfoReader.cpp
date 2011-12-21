@@ -22,12 +22,15 @@
 #include "DebugInfo/GlobalVar.h"
 #include "DebugInfo/CallInstruction.h"
 #include "llvm/Instructions.h"
+#include "llvm/Support/InstIterator.h"
+#include "llvm/Instructions.h"
+#include "llvm/Support/CallSite.h"
 #include <vector>
 #include <sstream>
 
 using namespace llvm;
 
-DebugInfoReader::DebugInfoReader(const char *filename, const Module &M) {
+DebugInfoReader::DebugInfoReader(const char *filename, Module &M) {
   std::vector<DebugInfo> dbgInfos;
 
 	// open file to write
@@ -40,13 +43,16 @@ DebugInfoReader::DebugInfoReader(const char *filename, const Module &M) {
 
 	// build line-instruction-map
   unsigned instNo = 0;
-  for (Module::const_iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
+  for (Module::iterator f = M.begin(), fe = M.end(); f != fe; ++f) {
     if (f->isDeclaration()) continue;
-    for (Function::const_iterator b = f->begin(), be = f->end(); b != be; ++b)
-      for (BasicBlock::const_iterator i = b->begin(), ie= b->end();
-          i != ie; ++i)
-        if (isa<CallInst>(&*i) || isa<InvokeInst>(&*i))
-          lineInstructionMap_[instNo++] = &*i;
+		for (inst_iterator i = inst_begin(f), ie = inst_end(f); i != ie; ++i) {
+			if (isa<CallInst>(&*i) || isa<InvokeInst>(&*i)) {
+				CallSite cs(&*i);
+				if (cs.getCalledFunction() && cs.getCalledFunction()->getName() == "_Z12plate_detectP5img_t")
+					errs() << instNo << "\n";
+        lineInstructionMap_[instNo++] = &*i;
+			}
+		}
   }
 
 	// read complete file
@@ -76,8 +82,8 @@ DebugInfoReader::DebugInfoReader(const char *filename, const Module &M) {
 			globalVars_.push_back(new GlobalVar(line));
 			break;
 		case TCallInstruction:
-			callInstructions_.push_back(new CallInstruction(line,
-					lineInstructionMap_[instNo++]));
+			callInstructions_.push_back(
+					new CallInstruction(line, &lineInstructionMap_));
 			break;
 		default:
 			errs() << "Error. Wrong debug type in input file "
