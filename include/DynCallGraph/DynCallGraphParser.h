@@ -22,7 +22,7 @@ namespace llvm {
 
   /// The class DynCallGraphParser reads a .dot file and offers an
   /// interface to retrieve the containing graph data.
-	class DynCallGraphParserPass: public ModulePass, public DynCallGraph{
+	class DynCallGraphParserPass: public ModulePass, public DynCallGraph {
 	public:
 		static char ID; // Class identification, replacement for typeinfo
 		DynCallGraphParserPass() : ModulePass(ID), DynCallGraph() { }

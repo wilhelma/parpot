@@ -8,17 +8,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "Analysis/ParPot.h"
-#include <set>
-#include <numeric>
+#include "Analysis/DGNodeSet.h"
+#include "Analysis/AnalysisContext.h"
 
 #include "llvm/Support/raw_ostream.h"
+
+#include <set>
+#include <numeric>
 
 using namespace llvm;
 
 DGNodeSet::DGNodeSet(const DepGraph &graph, const DGNodeVecTy &dSet,
-	const ParPot &pp) : graph_(&graph), nodes_(dSet), trueDeps_(0),  antiDeps_(0),
-											outDeps_(0), cntDeps_(0), domDeps_(0) {
+	const AnalysisContext &ctx) : graph_(&graph), nodes_(dSet), trueDeps_(0),
+													antiDeps_(0), outDeps_(0), cntDeps_(0), domDeps_(0) {
   std::vector<double> times;
 
   // compare dependencies pairwise
@@ -29,7 +31,7 @@ DGNodeSet::DGNodeSet(const DepGraph &graph, const DGNodeVecTy &dSet,
       findDeps(graph, *it, *ti, true);
 
     // collect runtimes
-    times.push_back(pp.getDCG()->getExecutionTime((*it)->getInstruction()));
+    times.push_back(ctx.getDCG()->getExecutionTime((*it)->getInstruction()));
   }
 
 	// calculate min/max savings
