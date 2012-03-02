@@ -94,6 +94,12 @@ class DynCallGraph {
   // couldn't be found.
   DynCallGraphNode *pRoot_;
 
+  // the total execution time of the application
+  static double totExTime;
+
+  // the total number of procedure calls
+  static unsigned totNoCalls;
+
   typedef std::map<unsigned, DynCallGraphNode*> DynFigMapTy;
   DynFigMapTy idMap_;    // Map from a node-id to its node
   DynFigMapTy numMap_;    // Map from the node number to its node
@@ -105,8 +111,6 @@ class DynCallGraph {
   void operator=(const DynCallGraph&);    // DO NOT IMPLEMENT
 
 public:
-  // the total execution time of the application
-  static double totExTime;
 
   static char ID; // Class identification, replacement for typeinfo
   static const std::string FILENAME;
@@ -154,8 +158,17 @@ public:
   /// get execution time of given call- (invoke-) instruction
   double getExecutionTime(Instruction*) const;
 
-  /// return the total execution time of the application
+  /// return the total number of calls
+  unsigned getTotNoCalls() const { return totNoCalls; }
+
+  /// increments the total number of calls by val
+  void incTotNoCalls(unsigned val) { totNoCalls += val; }
+
+    /// return the total execution time of the application
   static double getTotExecutionTime(void) { return totExTime; }
+
+  /// return the total execution time of the application
+  void setTotExecutionTime(double time) { totExTime = time; }
 };
 }
 

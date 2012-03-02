@@ -44,7 +44,11 @@ bool DynCallGraph::addEdge(unsigned parentID, unsigned nodeID, unsigned count) {
   if (!(pNode && pParent))
     return false;
 
+  // add called function to parent node
   pParent->addCalledFunction(pNode, count);
+
+  // increment number of total calls by count
+  incTotNoCalls(count);
   return true;
 }
 
@@ -77,3 +81,4 @@ double DynCallGraph::getExecutionTime(Instruction *inst) const {
 char DynCallGraph::ID = 0;
 const std::string DynCallGraph::FILENAME = "dyncallgraph.dot";
 double DynCallGraph::totExTime = 0.0;
+unsigned DynCallGraph::totNoCalls = 0;

@@ -70,7 +70,7 @@ namespace llvm {
 		void setPrioInformation(const Function*, const int&);
 
 		double static getTotalExTime() {
-			return TimeProfileInfo::totExTime;
+			return TimeProfileInfo::getTotalExTime();
 		}
 
 		double static getMinExTime() {
