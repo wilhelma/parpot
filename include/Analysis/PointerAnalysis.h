@@ -14,6 +14,7 @@
 #include "Analysis/Analysis.h"
 
 namespace llvm {
+
 	class PointerAnalysis: public Analysis {
 	public:
 		PointerAnalysis(AnalysisContext* tool): Analysis(tool) { };

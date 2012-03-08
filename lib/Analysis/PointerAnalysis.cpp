@@ -10,6 +10,8 @@
 
 #include "Analysis/PointerAnalysis.h"
 
+using namespace llvm;
+
 void PointerAnalysis::analyze(Function* parent,
 																Instruction* iA,
 																Instruction* iB) {

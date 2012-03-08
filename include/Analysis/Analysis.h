@@ -16,6 +16,13 @@
 
 namespace llvm {
 
+	enum ArgModRefResult {
+		NoModRef = 0x0,
+		Ref			 = 0x1,
+		Mod			 = 0x2,
+		ModRef 	 = 0x3
+	};
+
 	class Analysis {
 
 	protected:

@@ -96,3 +96,23 @@ void llvm_build_and_write_dyncallgraph(int argc, const char **argv) {
   save_dyn_arguments(argc, argv);
   atexit(CallGraphAtExitHandler);
 }
+
+void llvm_dummy_call(int i1, int i2, int i3) {
+	doNothing(i1, i2, i3);
+}
+
+void llvm_ovhd_start(void) {
+	startOvhdMeasure();
+}
+
+void llvm_ovhd_stop(unsigned loopSize) {
+	stopOvhdMeasure(loopSize);
+}
+
+void llvm_loop_start(void) {
+	startLoopMeasure();
+}
+
+void llvm_loop_stop(void) {
+	stopLoopMeasure();
+}

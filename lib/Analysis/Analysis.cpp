@@ -14,6 +14,11 @@
 
 using namespace llvm;
 
+ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs) {
+	lhs = static_cast<ArgModRefResult>((int)lhs | (int)rhs);
+	return lhs;
+}
+
 ArgModRefResult Analysis::getModRefForArg(const Function *pFunc,
 																				Argument *pArg) const {
  	typedef std::map<const Value*, ArgModRefResult> ArgResSetTy;
@@ -28,7 +33,7 @@ ArgModRefResult Analysis::getModRefForArg(const Function *pFunc,
 		if (it != visited.end())
 			return it->second;
 		else
-			visited[pArg] = NoModRef;
+			visited[pArg] = llvm::NoModRef;
 	}
 
 	// Definitions with weak linkage may be overridden at linktime with

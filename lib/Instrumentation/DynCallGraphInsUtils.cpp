@@ -10,6 +10,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "Instrumentation/DynCallGraphInsUtils.h"
+
 #include "llvm/Constants.h"
 #include "llvm/DerivedTypes.h"
 #include "llvm/Instructions.h"
@@ -18,6 +19,9 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/Module.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Support/IRBuilder.h"
+
+static unsigned OvhdLoopSize = 1000;
 
 void llvm::insertPrepareCallGraph(Function *mainFn, const char *fnName) {
   LLVMContext &context = mainFn->getContext();
@@ -144,23 +148,6 @@ void llvm::addNotifyCall(CallSite *cs, BasicBlock *bb, const char *fnNameBefore,
 void llvm::addNotifyFnCalled(Function *fn, const char *fnName,
     GlobalVariable *gv) {
 
-	// check whether function is a constructor == ignore
-	GlobalVariable *ctors = fn->getParent()->getNamedGlobal("llvm.global_ctors");
-	if (ctors) {
-		ConstantArray *CA = dyn_cast<ConstantArray>(ctors->getInitializer());
-		if (CA) {
-			for (User::op_iterator i = CA->op_begin(), e = CA->op_end(); i != e; ++i){
-				ConstantStruct *CS = dyn_cast<ConstantStruct>(*i);
-				if (CS == 0) continue;
-				// Must have a function or null ptr.
-				if (Function *fun = dyn_cast<Function>(CS->getOperand(1))) {
-					if (fun == fn)
-						return;
-				}
-			}
-		}
-  }
-
   LLVMContext &context = fn->getContext();
   BasicBlock::iterator insertPos = fn->begin()->getFirstNonPHI();
 
@@ -187,4 +174,109 @@ void llvm::addNotifyFnCalled(Function *fn, const char *fnName,
 
     CallInst::Create(callFn, makeArrayRef(Args), "", insertPos);
   }
+}
+
+void llvm::insertLoopOverheadMeasurement(Function *mainFn, const char *loopStart,
+																				 const char *loopStop) {
+  LLVMContext &Context = mainFn->getContext();
+  Module &M = *mainFn->getParent();
+  BasicBlock *Entry = mainFn->begin();
+  BasicBlock::iterator InsertPos = Entry->begin();
+
+  // method stuff for llvm_loop_start
+	Constant *loopStartFn = M.getOrInsertFunction(loopStart,
+																								Type::getVoidTy(Context),
+																								(Type *)0);
+
+  // method stuff for llvm_loop_stop
+	Constant *loopStopFn = M.getOrInsertFunction(loopStop,
+																							 Type::getVoidTy(Context),
+																							 (Type *)0);
+
+  // create necessary basic blocks "start" -> "for.body" -> "for.end" -> "entry"
+  BasicBlock *start = BasicBlock::Create(Context, "start", mainFn, Entry);
+  BasicBlock *forBody = BasicBlock::Create(Context, "for.body", mainFn, Entry);
+  BasicBlock *forEnd = BasicBlock::Create(Context, "for.end", mainFn, Entry);
+
+  // insert code for basic block "start"
+  IRBuilder<> builder(start);
+  builder.CreateCall(loopStartFn, "");
+  builder.CreateBr(forBody);
+
+  // insert code for basic block "for.body"
+  builder.SetInsertPoint(forBody);
+  PHINode *pn = builder.CreatePHI(Type::getInt32Ty(Context), 2,"i");
+	Value *iVal = builder.CreateAdd(pn, Constant::getIntegerValue(
+								Type::getInt32Ty(Context), APInt(32, 1)), "inc");
+  pn->addIncoming(Constant::getNullValue(Type::getInt32Ty(Context)), start);
+  pn->addIncoming(iVal, forBody);
+  Value *exitVal = builder.CreateICmpEQ(iVal, Constant::getIntegerValue(
+  		Type::getInt32Ty(Context), APInt(32, OvhdLoopSize)), "exitcond");
+  builder.CreateCondBr(exitVal, forEnd, forBody);
+
+  // insert code for basic block "for.end"
+  builder.SetInsertPoint(forEnd);
+  builder.CreateCall(loopStopFn, "");
+  builder.CreateBr(Entry);
+}
+
+void llvm::insertOverheadMeasurement(Function *mainFn, const char *fnName,
+																		 const char *ovhdStart,
+																		 const char *ovhdStop) {
+  LLVMContext &Context = mainFn->getContext();
+  Module &M = *mainFn->getParent();
+  BasicBlock *Entry = mainFn->begin();
+  BasicBlock::iterator InsertPos = Entry->begin();
+
+  // method stuff for llvm_dummy_call
+	Constant *InitFn = M.getOrInsertFunction(fnName, Type::getVoidTy(Context),
+																					 Type::getInt32Ty(Context),
+																					 Type::getInt32Ty(Context),
+																					 Type::getInt32Ty(Context),
+																					 (Type *)0);
+	std::vector<Value*> Args(3);
+	Args[0] = Constant::getNullValue(Type::getInt32Ty(Context));
+	Args[1] = Constant::getNullValue(Type::getInt32Ty(Context));
+	Args[2] = Constant::getNullValue(Type::getInt32Ty(Context));
+
+  // method stuff for llvm_ovhd_start
+	Constant *ovhdStartFn = M.getOrInsertFunction(ovhdStart,
+																								Type::getVoidTy(Context),
+																								(Type *)0);
+
+  // method stuff for llvm_ovhd_stop
+	Constant *ovhdStopFn = M.getOrInsertFunction(ovhdStop,
+																							 Type::getVoidTy(Context),
+																							 Type::getInt32Ty(Context),
+																							 (Type *)0);
+	std::vector<Value*> StopArgs(1);
+	StopArgs[0] = Constant::getIntegerValue(Type::getInt32Ty(Context),
+																					APInt(32, OvhdLoopSize));
+
+  // create necessary basic blocks "start" -> "for.body" -> "for.end" -> "entry"
+  BasicBlock *start = BasicBlock::Create(Context, "start", mainFn, Entry);
+  BasicBlock *forBody = BasicBlock::Create(Context, "for.body", mainFn, Entry);
+  BasicBlock *forEnd = BasicBlock::Create(Context, "for.end", mainFn, Entry);
+
+  // insert code for basic block "start"
+  IRBuilder<> builder(start);
+  builder.CreateCall(ovhdStartFn, "");
+  builder.CreateBr(forBody);
+
+  // insert code for basic block "for.body"
+  builder.SetInsertPoint(forBody);
+  PHINode *pn = builder.CreatePHI(Type::getInt32Ty(Context), 2,"i");
+	builder.CreateCall(InitFn, makeArrayRef(Args), "");
+	Value *iVal = builder.CreateAdd(pn, Constant::getIntegerValue(
+								Type::getInt32Ty(Context), APInt(32, 1)), "inc");
+  pn->addIncoming(Constant::getNullValue(Type::getInt32Ty(Context)), start);
+  pn->addIncoming(iVal, forBody);
+  Value *exitVal = builder.CreateICmpEQ(iVal, Constant::getIntegerValue(
+  		Type::getInt32Ty(Context), APInt(32, OvhdLoopSize)), "exitcond");
+  builder.CreateCondBr(exitVal, forEnd, forBody);
+
+  // insert code for basic block "for.end"
+  builder.SetInsertPoint(forEnd);
+  builder.CreateCall(ovhdStopFn, makeArrayRef(StopArgs), "");
+  builder.CreateBr(Entry);
 }

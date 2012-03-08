@@ -40,4 +40,30 @@ void llvm_call_finished_instruction(char* callOp, unsigned ownFnNum);
  */
 void llvm_build_and_write_dyncallgraph(int argc, const char **argv);
 
+/*
+ * A dummy call in order to measure the overhead for procedure calls.
+ */
+void llvm_dummy_call(int, int, int);
+
+/*
+ * Indicates a start of the overhead measurment.
+ */
+void llvm_ovhd_start(void);
+
+/*
+ * Indicates a stop of the overhead measurment with the used number of dummy.
+ * calls.
+ */
+void llvm_ovhd_stop(unsigned loopSize);
+
+/*
+ * Indicates a start of the loop overhead measurment.
+ */
+void llvm_loop_start(void);
+
+/*
+ * Indicates a stop of the loop overhead measurment.
+ */
+void llvm_loop_stop(void);
+
 #endif
