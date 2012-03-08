@@ -132,6 +132,14 @@ bool DynCallGraphIns::runOnModule(Module &M) {
 
   // Add the initialization call to main.
   insertPrepareCallGraph(Main, "llvm_build_and_write_dyncallgraph");
+
+  // Add overhead measurement code to main
+  insertOverheadMeasurement(Main, "llvm_dummy_call",
+																	"llvm_ovhd_start",
+																	"llvm_ovhd_stop");
+
+  // Add loop overhead measurement code to main
+  insertLoopOverheadMeasurement(Main, "llvm_loop_start", "llvm_loop_stop");
   return true;
 }
 

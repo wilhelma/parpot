@@ -17,6 +17,7 @@ typedef struct fNode {
   unsigned num;
   unsigned count;
   double exTime;
+  double ovTime; /* overhead time */
   double tmpTime;
   bool profiling;
   unsigned parent;
@@ -48,5 +49,15 @@ void changeCurrentFunctionName(fGraphT* g, char* name);
 void writeGraphToFile(fGraphT *g, const char*);
 
 void leaveNode(fGraphT* g, unsigned num);
+
+void doNothing(int, int, int);
+
+void startOvhdMeasure(void);
+
+void stopOvhdMeasure(unsigned loopSize);
+
+void startLoopMeasure(void);
+
+void stopLoopMeasure(void);
 
 #endif

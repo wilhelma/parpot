@@ -125,31 +125,6 @@ void llvm::AddGetTimesInFunction(Function *f, const char *FnName,
       (Type *)0);
   Instruction *before = CallInst::Create(GetFn, "timebefore", insertPos);
 
-
-//  if (f->getName() == "main") {
-//    std::vector<Value*> Args(1);
-//    const Type *Int8Ptr = PointerType::getUnqual(IntegerType::getInt8Ty(context));
-//    Constant *zero = Constant::getNullValue(IntegerType::getInt32Ty(context));
-//    Constant *gep_params[] = {
-//      zero,
-//      zero
-//    };
-//    Constant *beepFn = M.getOrInsertFunction("llvm_beep",
-//                                  Type::getVoidTy(context), Int8Ptr, (Type *)0);
-//
-//    for (Function::iterator it = f->begin(), e = f->end(); it != e; ++it) {
-//      insertPos = it->getFirstNonPHI();
-//      Constant *msg_0 = ConstantArray::get(context, it->getName(), true);
-//      GlobalVariable *bbl = new GlobalVariable(
-//        M, msg_0->getType(), true, GlobalValue::InternalLinkage, msg_0, "bbl");
-//      Args[0] = ConstantExpr::getGetElementPtr(bbl, gep_params, 2);
-//
-//
-//      CallInst::Create(beepFn, Args.begin(), Args.end(), "", insertPos);
-//    }
-//  }
-
-
   // get time at the ends
   for (inst_iterator it = inst_begin(f), e = inst_end(f); it != e; ++it) {
     if (isa<ReturnInst>(&*it) || isa<UnreachableInst>(&*it)) {
@@ -173,39 +148,3 @@ void llvm::AddGetTimesInFunction(Function *f, const char *FnName,
     }
   }
 }
-
-//void llvm::AddGetTimeInBasicBlock(BasicBlock *BB, const char *FnName,
-//          unsigned CounterNum, GlobalValue *TimerArray) {
-//  // Insert the getTime as first instructions...
-//  BasicBlock::iterator InsertPos = BB->getFirstNonPHI();
-//  //while (isa<AllocaInst>(InsertPos))
-//  //  ++InsertPos;
-//
-//  LLVMContext &Context = BB->getContext();
-//
-//  // Create the getelementptr constant expression
-//  std::vector<Constant*> Indices(2);
-//  Indices[0] = Constant::getNullValue(Type::getInt32Ty(Context));
-//  Indices[1] = ConstantInt::get(Type::getInt32Ty(Context), CounterNum);
-//  Constant *ElementPtr =
-//    ConstantExpr::getGetElementPtr(TimerArray, &Indices[0],
-//                                          Indices.size());
-//
-//  // Load, increment and store the value back.
-//  Value *OldVal = new LoadInst(ElementPtr, "OldFuncTimer", InsertPos);
-//
-//  Module &M = *BB->getParent()->getParent();
-//  Constant *GetFn = M.getOrInsertFunction(FnName, Type::getDoubleTy(Context),
-//      (Type *)0);
-//  Instruction *GetTimeBefore = CallInst::Create(GetFn, "timebefore", InsertPos);
-//
-//
-//  // todo: getTerminator() may be null!!
-//  InsertPos = BB->getParent()->back().getTerminator();
-//  Instruction *GetTimeAfter = CallInst::Create(GetFn, "timeafter", InsertPos);
-//  Value *Delay = BinaryOperator::Create(Instruction::FSub, GetTimeAfter,
-//                              GetTimeBefore, "Delay", InsertPos);
-//  Value *NewVal = BinaryOperator::Create(Instruction::FAdd, OldVal,
-//                              Delay, "NewFuncTimer", InsertPos);
-//  new StoreInst(NewVal, ElementPtr, InsertPos);
-//}

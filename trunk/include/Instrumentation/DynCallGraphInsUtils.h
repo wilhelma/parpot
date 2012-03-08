@@ -24,6 +24,16 @@ namespace llvm {
   /// collected calling information.
   void insertPrepareCallGraph(Function *mainFn, const char *fnName);
 
+  /// Inserts a loop where several calls to the runtime library will be made.
+  /// The needed time for all calls will be written to a global value.
+  void insertOverheadMeasurement(Function *mainFn, const char *fnName,
+																 const char *ovhdStart, const char *ovhdStop);
+
+  /// Inserts an empty loop for measuring the runtime. The result will be
+  /// written to a global value.
+  void insertLoopOverheadMeasurement(Function *mainFn, const char *loopStart,
+																											 const char *loopStop);
+
   /// adds a call to a given library function (fnName) which indicates an
   /// upcoming call instruction. This is an important step to build a dynamic
   /// call graph.

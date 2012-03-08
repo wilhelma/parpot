@@ -6,14 +6,12 @@
 #include <stdio.h>
 #include <papi.h>
 
-__inline__ uint64_t rdtsc() {
-  uint32_t lo, hi;
-  __asm__ __volatile__ (      // serialize
-  "xorl %%eax,%%eax \n        cpuid"
-  ::: "%rax", "%rbx", "%rcx", "%rdx");
-  /* We cannot use "=A", since this would use %rax on x86_64 and return only the lower 32bits of the TSC */
-  __asm__ __volatile__ ("rdtsc" : "=a" (lo), "=d" (hi));
-  return (uint64_t)hi << 32 | lo;
+static const int MSIZE = 1000;
+static double CallOverhead = 0;
+static double LoopOverhead = 0;
+
+double get_time() {
+  return PAPI_get_real_cyc();
 }
 
 /*
@@ -22,12 +20,15 @@ __inline__ uint64_t rdtsc() {
  */
 void insertNode(fGraphT *g, char *name, unsigned num) {
 
+	/* get timestamp for overhead compensation */
+	double start = get_time();
+
 	/* declarations */
 	unsigned tmp, sibling;
 
   if (g->nextSlot == 0) {
-  	assert(strcmp(name, "main") == 0
-						&& "Error! Program has no main function!");
+  	if (strcmp(name, "main") != 0)
+  		return;
 
   	/* initialize graph */
   	g->currentSize = STARTSIZE;
@@ -40,7 +41,7 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
   	g->array[g->currentNode].pName = name;
     g->array[g->currentNode].num = num;
     g->array[g->currentNode].count = 1;
-    g->array[g->currentNode].exTime = rdtsc();
+    g->array[g->currentNode].exTime = get_time();
     g->array[g->currentNode].tmpTime = 0;
     g->array[g->currentNode].profiling = true;
     g->array[g->currentNode].parent = 0;
@@ -63,9 +64,13 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     while (tmp) {
       if (g->array[tmp].num == num) {
       	g->array[tmp].count++;
-      	g->array[tmp].exTime = rdtsc();
+      	g->array[tmp].exTime = get_time();
         g->array[tmp].profiling = true;
         g->currentNode = tmp;
+
+			  /* increase overhead time for computation */
+  			g->array[tmp].ovTime += get_time() - start;
+
         return; /* prohibit more than one analysis per node */
       }
       tmp = g->array[tmp].sibling;
@@ -84,58 +89,90 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
     g->array[g->currentNode].pName = name;
     g->array[g->currentNode].num = num;
     g->array[g->currentNode].count = 1;
-    g->array[g->currentNode].exTime = rdtsc();
+    g->array[g->currentNode].exTime = get_time();
     g->array[g->currentNode].tmpTime = 0;
     g->array[g->currentNode].profiling = true;
     g->array[g->currentNode].first_child = 0;
     g->array[g->currentNode].last_child = 0;
     g->array[g->currentNode].sibling = 0;
   }
+
+  /* increase overhead time for computation */
+  g->array[g->currentNode].ovTime += get_time() - start;
 }
 
 /*
  * changeCurrentFunctionName changes the name of the current node.
  */
 void changeCurrentFunctionName(fGraphT* g, char* name) {
+
+  if (g->nextSlot == 0)
+  	return;
+
+	/* get timestamp for overhead compensation */
+	double start = get_time();
+
 	assert (g->array[g->currentNode].count &&
 			"Error! No Function was called before!");
   g->array[g->currentNode].pName = name;
+
+  /* increase overhead time for computation */
+  g->array[g->currentNode].ovTime += get_time() - start;
 }
 
 /*
  * leaveNode returns to the last function node.
  */
 void leaveNode(fGraphT* g, unsigned num) {
+  if (g->nextSlot == 0)
+  	return;
+
+	/* get timestamp for overhead compensation */
+	double start = get_time();
 
   /* declarations */
-  /* unsigned tmp; */
+	unsigned node = g->currentNode;
 
-  assert(g->array[g->currentNode].count &&
+	assert(g->array[g->currentNode].count &&
   		"Error! Inconsistent call graph detected!");
-
-  /* check if node with given number is still in list */
-/*  if (g->pCurrentNode->num != num) {
-		tmpEdge = g->pCurrentNode->pParent->pEdges;
- 		while (tmpEdge->pNodeTo->num != num) {
- 			if (tmpEdge->pNext)
- 				tmpEdge = tmpEdge->pNext;
- 			else {
- 				assert (tmpEdge->pNodeTo != g->pStartNode
- 								&& "Error! Node was already deleted => Graph inconsistent!");
- 				tmpEdge = tmpEdge->pNodeTo->pParent->pEdges;
- 			}
- 		}
- 	}*/
 
   /* calculate correct time */
   g->array[g->currentNode].tmpTime +=
-  		rdtsc() - g->array[g->currentNode].exTime;
+  		get_time() - g->array[g->currentNode].exTime;
   g->array[g->currentNode].exTime = g->array[g->currentNode].tmpTime;
   g->array[g->currentNode].profiling = false;
   g->currentNode = g->array[g->currentNode].parent;
+
+  /* increase overhead time for computation */
+  g->array[node].ovTime += get_time() - start;
 }
 
-void writeNode(FILE *outFile, fGraphT *g, unsigned nodeIndex) {
+double calcOverhead(fGraphT *g, unsigned nodeIndex,
+										double *fnOvhds) {
+	unsigned tmp;
+	fNodeT *pNode = &g->array[nodeIndex];
+
+	/* increase overhead per called function */
+	if (!fnOvhds[nodeIndex]) {
+
+		 // 3 methods per procedure * call number times * (get_time + call ovhd)
+		fnOvhds[nodeIndex] += 3 * pNode->count * CallOverhead
+		// accumulated overhead for all calls of the given procedure
+												  + pNode->ovTime;
+
+		// consider inner calls recursively
+	  tmp = pNode->first_child;
+	  while (tmp) {
+			fnOvhds[nodeIndex] += calcOverhead(g, tmp, fnOvhds);
+	    tmp = g->array[tmp].sibling;
+	  }
+	}
+
+	return fnOvhds[nodeIndex];
+}
+
+void writeNode(FILE *outFile, fGraphT *g, unsigned nodeIndex,
+							 double *fnOvhds) {
 
 	/* declarations */
 	unsigned tmp;
@@ -144,10 +181,13 @@ void writeNode(FILE *outFile, fGraphT *g, unsigned nodeIndex) {
 
   /* check execution time */
   if (pNode->profiling) {
-    pNode->tmpTime += rdtsc() - pNode->exTime;
+    pNode->tmpTime += get_time() - pNode->exTime;
     pNode->exTime = pNode->tmpTime;
     pNode->profiling = false;
   }
+
+  /* subtract overhead for measuring */
+  pNode->exTime -= calcOverhead(g, nodeIndex, fnOvhds);
 
   /* write node entry */
   fprintf(outFile, "\tNode%u [shape=record,label=\"{%s;%u;%f}\"];\n",
@@ -161,17 +201,17 @@ void writeNode(FILE *outFile, fGraphT *g, unsigned nodeIndex) {
   /* write child nodes */
   tmp = pNode->first_child;
   while (tmp) {
-    writeNode(outFile, g, tmp);
+    writeNode(outFile, g, tmp, fnOvhds);
     tmp = g->array[tmp].sibling;
   }
 }
 
 void writeGraphToFile(fGraphT *g, const char * fileName) {
+  if (g->nextSlot == 0)
+  	return;
 
-	for (int i=STARTSLOT; i<STARTSIZE && g->array[i].count; ++i) {
-		printf("array[%d]: %s - first_child: %d last_child: %d sibling: %d\n", i, g->array[i].pName,
-				g->array[i].first_child, g->array[i].last_child, g->array[i].sibling);
-	}
+	double fnOvhds[g->nextSlot];
+	memset(fnOvhds,0,sizeof(fnOvhds));
 
   /* open file for writing */
   FILE *outFile = fopen(fileName, "w");
@@ -187,7 +227,7 @@ void writeGraphToFile(fGraphT *g, const char * fileName) {
   fprintf(outFile, "\tlabel=\"Dynamic Call Graph\";\n\n");
 
   /* write nodes recursively */
-  writeNode(outFile, g, STARTSLOT);
+  writeNode(outFile, g, STARTSLOT, fnOvhds);
 
   /* write graph footer */
   fprintf(outFile, "}");
@@ -196,4 +236,26 @@ void writeGraphToFile(fGraphT *g, const char * fileName) {
   fclose(outFile);
 
   printf("Dynamic callgraph written to: %s...\n", fileName);
+  printf("And the result is: %f\n", CallOverhead);
+}
+
+void doNothing(int i1, int i2, int i3) {
+	get_time();
+}
+
+void startOvhdMeasure(void) {
+	CallOverhead = get_time();
+}
+
+void stopOvhdMeasure(unsigned loopSize) {
+	CallOverhead = (get_time() - CallOverhead - LoopOverhead) / loopSize;
+	assert(LoopOverhead > 0 && "Measurement for loop overhead hasn't performed!");
+}
+
+void startLoopMeasure(void) {
+	LoopOverhead = get_time();
+}
+
+void stopLoopMeasure(void) {
+	LoopOverhead = get_time() - LoopOverhead;
 }

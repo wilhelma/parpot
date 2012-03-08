@@ -12,6 +12,7 @@
 
 #include "DynCallGraph/DynCallGraphParser.h"
 #include "DynCallGraph/DynCallGraph.h"
+#include "Analysis/Analysis.h"
 #include "Analysis/TimeProfileInfo.h"
 #include "Analysis/CorrelationAnalysis.h"
 #include "Analysis/PointerAnalysis.h"

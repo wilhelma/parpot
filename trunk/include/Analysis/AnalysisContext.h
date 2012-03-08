@@ -22,18 +22,11 @@
 #include <DSGraph.h>
 
 namespace llvm {
-	class ParPot;
 
 	// constants
 	static const std::string NoObj = "";
 
 	// enums
-	enum ArgModRefResult {
-		NoModRef = 0x0,
-		Ref			 = 0x1,
-		Mod			 = 0x2,
-		ModRef 	 = 0x3
-	};
 	enum AccTy { // access type
 		Read            = 0x0,
 		Change          = 0x1
@@ -43,7 +36,8 @@ namespace llvm {
 	typedef std::map<GlobalVariable*, AccTy> GlobAccMapTy; // access type per gv
 	typedef std::map<Function*, GlobAccMapTy> FuncGlobalsMapTy; //globals per fn
 
-	ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs);
+	// forward declaration
+	class ParPot;
 
 	class AnalysisContext {
 		AnalysisContext(const AnalysisContext&);            // DO NOT IMPLEMENT

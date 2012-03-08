@@ -12,11 +12,6 @@
 
 using namespace llvm;
 
-ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs) {
-	lhs = static_cast<ArgModRefResult>((int)lhs | (int)rhs);
-	return lhs;
-}
-
 Function* AnalysisContext::getFunctionPtr(const CallSite &cs) const {
 
   Function *f = cs.getCalledFunction();

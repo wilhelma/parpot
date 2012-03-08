@@ -52,7 +52,7 @@ void CorrelationAnalysis::analyze(Function* parent,
     }
 
 		// consider instruction itself (control dependence caused by a return value)
-		if (checkDefUse(&*iA, &*iB, 0, true, true)) {
+		if (checkDefUse(&*iA, &*iB, 0, true, false)) {
 			dgIt->second->addDependence(iA, iB, ControlDependence, NoObj, NoObj);
 		}
   }
