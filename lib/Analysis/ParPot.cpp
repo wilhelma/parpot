@@ -37,6 +37,7 @@ X("parpot-analysis", "Parallelization potential measurement", false, true);
 bool ParPot::runOnModule(Module &M) {
 
 		// instantiate analysis tool
+		errs() << "1. Prepare analysis context\n";
 		ctx_ = new AnalysisContext(&M, &getAnalysis<DynCallGraphParserPass>(),
 															 &getAnalysis<CallGraph>(),
 															 &getAnalysis<EquivBUDataStructures>(),
@@ -51,8 +52,12 @@ bool ParPot::runOnModule(Module &M) {
     // iterate through static callgraph and insert missing functions from
     // dynamic callgraph where applicable
     CallGraphNode *root = ctx_->getGC()->getRoot();
+
+    errs() << "2. Analyze dependencies\n";
     analyzeDependencies(root->getFunction());
+		errs() << "3. Collect node sets\n";
     collectNodeSets(root->getFunction());
+
 
     // sort function sets
 		std::sort(nodeSetVec_.begin(), nodeSetVec_.end(), DGNodeSet::compare);

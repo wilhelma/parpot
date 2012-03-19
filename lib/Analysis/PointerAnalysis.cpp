@@ -56,6 +56,7 @@ void PointerAnalysis::analyze(Function* parent,
   for (; iSetA != eSetA; ++iSetA) {
   	nHMapTy::iterator iSetB = nhB.begin(), eSetB = nhB.end();
   	for (; iSetB != eSetB; ++iSetB) {
+
   		//pDSG->computeNodeMapping(iSetA->first, iSetB->first, nodeMap, false);
   		if (iSetA->first.getNode() == iSetB->first.getNode()){//!nodeMap.empty()){
         std::string objA = NoObj, objB = NoObj;

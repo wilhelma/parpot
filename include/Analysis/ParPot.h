@@ -85,9 +85,8 @@ namespace llvm {
 
 		virtual void getAnalysisUsage(AnalysisUsage &AU) const {
 				AU.setPreservesAll();
-				AU.addRequired<CallGraph>();
+				//AU.addRequired<CallGraph>();
 				AU.addRequired<EquivBUDataStructures>();
-				AU.addRequired<CountStoresPass>();
 				AU.addRequired<DynCallGraphParserPass>();
 				AU.addRequired<DSAA>();
 				AU.addRequired<BUDataStructures>();
