@@ -89,6 +89,7 @@ bool DynCallGraphParserPass::fillGraph(const char *filename) {
 }
 
 bool DynCallGraphParserPass::runOnModule(Module &M) {
+	errs() << "oleee\n";
   fillGraph("dyncallgraph.dot");
 
   // retrieve main function

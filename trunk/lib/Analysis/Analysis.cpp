@@ -20,7 +20,7 @@ ArgModRefResult& operator|=(ArgModRefResult &lhs, ArgModRefResult rhs) {
 }
 
 ArgModRefResult Analysis::getModRefForArg(const Function *pFunc,
-																				Argument *pArg) const {
+																				  Argument *pArg) const {
  	typedef std::map<const Value*, ArgModRefResult> ArgResSetTy;
 	typedef std::vector<const Use*> UseVecTy;
 
@@ -81,7 +81,7 @@ ArgModRefResult Analysis::getModRefForInst(Instruction *I, const Value *pArg) co
     Function::arg_iterator iFArg = f->arg_begin();
     CallSite::arg_iterator iArg = cs.arg_begin(), eArg = cs.arg_end();
     for (; iArg != eArg; ++iArg, ++iFArg) {
-			if (iArg->get() == pArg) {
+			if (iArg->get() == pArg && iFArg->getType()->isPointerTy()) {
 				visited[I]	|= getModRefForArg(f, &*iFArg);
 			}
     }
@@ -153,7 +153,8 @@ ArgModRefResult Analysis::getModRefForDSNode(const CallSite &cS,
 			if (!nodeMap.empty()) {
 				Function::arg_iterator iFArg = f->arg_begin();
 				for(int j=0; j < i; ++iFArg, ++j) { }
-				result = this->getModRefForArg(f, &*iFArg);
+				if (iFArg->getType()->isPointerTy())
+					result = this->getModRefForArg(f, &*iFArg);
 				break;
 			}
 		}

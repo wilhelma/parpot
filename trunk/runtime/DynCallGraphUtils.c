@@ -54,9 +54,10 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
 
   	/* check array size and increase dynamically */
   	if (g->nextSlot == g->currentSize) {
+    	printf ("nextslot: %i - currentsize: %i\n", g->nextSlot, g->currentSize);
   		g->currentSize *= 2;
-      assert(realloc(g->array, g->currentSize * sizeof(fNodeT)) != NULL &&
-							"Error! Not enough memory!");
+      assert((g->array = realloc(g->array, g->currentSize * sizeof(fNodeT)))
+								!= NULL && "Error! Not enough memory!");
   	}
 
     /* check if node already exist */
@@ -155,7 +156,7 @@ double calcOverhead(fGraphT *g, unsigned nodeIndex,
 	/* increase overhead per called function */
 	if (!fnOvhds[nodeIndex]) {
 
-		 // 3 methods per procedure * call number times * (get_time + call ovhd)
+		 // 2 methods per procedure * call number times * (get_time + call ovhd)
 		fnOvhds[nodeIndex] += 3 * pNode->count * CallOverhead
 		// accumulated overhead for all calls of the given procedure
 												  + pNode->ovTime;
@@ -188,6 +189,7 @@ void writeNode(FILE *outFile, fGraphT *g, unsigned nodeIndex,
 
   /* subtract overhead for measuring */
   pNode->exTime -= calcOverhead(g, nodeIndex, fnOvhds);
+  pNode->exTime = (pNode->exTime < 0) ? 0 : pNode->exTime;
 
   /* write node entry */
   fprintf(outFile, "\tNode%u [shape=record,label=\"{%s;%u;%f}\"];\n",
@@ -207,11 +209,11 @@ void writeNode(FILE *outFile, fGraphT *g, unsigned nodeIndex,
 }
 
 void writeGraphToFile(fGraphT *g, const char * fileName) {
-  if (g->nextSlot == 0)
+	if (g->nextSlot == 0)
   	return;
 
-	double fnOvhds[g->nextSlot];
-	memset(fnOvhds,0,sizeof(fnOvhds));
+	double *fnOvhds = (double *) malloc(g->nextSlot * sizeof(double));
+	memset(fnOvhds,0,sizeof((*fnOvhds)));
 
   /* open file for writing */
   FILE *outFile = fopen(fileName, "w");
