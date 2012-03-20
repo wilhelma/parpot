@@ -12,6 +12,11 @@
 #define PARPOT_ANALYSIS_H_
 
 #include "llvm/Instructions.h"
+#include "llvm/Constants.h"
+#include "llvm/Module.h"
+#include "llvm/Analysis/AliasAnalysis.h"
+#include "llvm/Analysis/Passes.h"
+
 #include "Analysis/AnalysisContext.h"
 
 namespace llvm {

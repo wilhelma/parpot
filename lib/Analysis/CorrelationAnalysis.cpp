@@ -12,7 +12,7 @@
 
 #include "llvm/Support/InstIterator.h"
 
-void CorrelationAnalysis::analyze(Function* parent,
+void llvm::CorrelationAnalysis::analyze(Function* parent,
 																Instruction* iA,
 																Instruction* iB) {
 
