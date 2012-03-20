@@ -198,7 +198,7 @@ namespace {
 
       // consider phi instructions
       if (PHINode *phi = dyn_cast<PHINode>(val)) {
-      	for (int i=0; i<phi->getNumIncomingValues(); ++i) {
+      	for (unsigned i=0; i<phi->getNumIncomingValues(); ++i) {
       		if (checkDefUse(phi->getIncomingValue(i), iB, level + 1, true))
       			return true;
       	}
