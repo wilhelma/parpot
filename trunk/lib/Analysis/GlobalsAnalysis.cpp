@@ -10,7 +10,7 @@
 
 #include "Analysis/GlobalsAnalysis.h"
 
-void GlobalsAnalysis::analyze(Function *parent,
+void llvm::GlobalsAnalysis::analyze(Function *parent,
                               Instruction *iA, Instruction *iB) {
 
   // check if instructions are really call-/invoke-instructions

@@ -41,7 +41,6 @@ bool ParPot::runOnModule(Module &M) {
 		ctx_ = new AnalysisContext(&M, &getAnalysis<DynCallGraphParserPass>(),
 															 &getAnalysis<CallGraph>(),
 															 &getAnalysis<EquivBUDataStructures>(),
-															 &getAnalysis<DSAA>(),
 															 &getAnalysis<BUDataStructures>());
 
     // prepare analysis

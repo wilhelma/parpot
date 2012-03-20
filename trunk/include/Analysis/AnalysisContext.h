@@ -18,7 +18,6 @@
 #include "Analysis/DGNodeSet.h"
 
 #include <DataStructure.h>
-#include <DataStructureAA.h>
 #include <DSGraph.h>
 
 namespace llvm {
@@ -51,16 +50,14 @@ namespace llvm {
 		DynCallGraph *pDCG_;
 		CallGraph *pCG_;
 		EquivBUDataStructures *pDSA_;
-		DSAA *pAA_;
-		BUDataStructures *pBU_;
 
 		DGNodeSet::DepGraphMapTy fDepGraphs_;
 
 	public:
 		AnalysisContext(Module *pMod, DynCallGraph *pDCG, CallGraph *pCG,
-								 EquivBUDataStructures *pDSA, DSAA *pAA,
-								 BUDataStructures *pBU): pMod_(pMod), pDCG_(pDCG), pCG_(pCG),
-																				 pDSA_(pDSA), pAA_(pAA), pBU_(pBU){ }
+								 EquivBUDataStructures *pDSA, BUDataStructures *pBU):
+									 pMod_(pMod), pDCG_(pDCG), pCG_(pCG),
+									 pDSA_(pDSA){ }
 
 		/// returns a function pointer tied to the given callsite. If a dynamic
 		/// function is called, the pointer to the concrete function may be returned
@@ -73,8 +70,6 @@ namespace llvm {
 	  DynCallGraph* getDCG(void) const { return pDCG_; }
 	  CallGraph* getGC(void) const { return pCG_; }
 	  EquivBUDataStructures* getDSA(void) const { return pDSA_; }
-	  DSAA* getAA(void) const { return pAA_; }
-	  BUDataStructures* getBU(void) const { return pBU_; }
 	  Module* getMod(void) const { return pMod_; }
 	};
 }

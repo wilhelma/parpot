@@ -30,7 +30,6 @@
 #include "llvm/Module.h"
 
 #include <DataStructure.h>
-#include <DataStructureAA.h>
 #include <DSGraph.h>
 
 #include <math.h>
@@ -85,10 +84,9 @@ namespace llvm {
 
 		virtual void getAnalysisUsage(AnalysisUsage &AU) const {
 				AU.setPreservesAll();
-				//AU.addRequired<CallGraph>();
+				AU.addRequired<CallGraph>();
 				AU.addRequired<EquivBUDataStructures>();
 				AU.addRequired<DynCallGraphParserPass>();
-				AU.addRequired<DSAA>();
 				AU.addRequired<BUDataStructures>();
 	 }
 

@@ -110,7 +110,7 @@ ArgModRefResult Analysis::getModRefForInst(Instruction *I, const Value *pArg) co
     }
     break;
   case Instruction::ICmp:
-    // Don't count comparisons of a no-alias return value against null as
+    //  as
     // captures. This allows us to ignore comparisons of malloc *instPairSet[pair]s
     // with null, for example.
     if (isNoAliasCall(pArg->stripPointerCasts()))
