@@ -56,8 +56,7 @@ namespace llvm {
 	public:
 		AnalysisContext(Module *pMod, DynCallGraph *pDCG, CallGraph *pCG,
 								 EquivBUDataStructures *pDSA, BUDataStructures *pBU):
-									 pMod_(pMod), pDCG_(pDCG), pCG_(pCG),
-									 pDSA_(pDSA){ }
+									 pMod_(pMod), pDCG_(pDCG), pCG_(pCG), pDSA_(pDSA){ }
 
 		/// returns a function pointer tied to the given callsite. If a dynamic
 		/// function is called, the pointer to the concrete function may be returned
