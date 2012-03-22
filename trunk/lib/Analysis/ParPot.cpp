@@ -50,13 +50,12 @@ bool ParPot::runOnModule(Module &M) {
 
     // iterate through static callgraph and insert missing functions from
     // dynamic callgraph where applicable
-    CallGraphNode *root = ctx_->getGC()->getRoot();
+    CallGraphNode* root = ctx_->getGC()->getRoot();
 
     errs() << "2. Analyze dependencies\n";
     analyzeDependencies(root->getFunction());
 		errs() << "3. Collect node sets\n";
     collectNodeSets(root->getFunction());
-
 
     // sort function sets
 		std::sort(nodeSetVec_.begin(), nodeSetVec_.end(), DGNodeSet::compare);
@@ -83,15 +82,15 @@ void ParPot::analyzeDependencies(Function *parent) {
   // consider every pair of a callsite for function A and a callsite
   // for function B to check dependencies
   for (inst_iterator it = inst_begin(parent), e = inst_end(parent);
-      it != e; ++it)
+      it != e; ++it) {
     if (isa<CallInst>(&*it) || isa<InvokeInst>(&*it)) {
       CallSite cs(&*it);
       Function *tmp = ctx_->getFunctionPtr(cs);
       if (!tmp) continue;
       DepGraphNode *node = graph->getNode(&*it, /*create if missing*/ true);
-      nodes.push_back(std::make_pair(node, tmp));
+       nodes.push_back(std::make_pair(node, tmp));
     }
-
+  }
 
   for (DGVectTy::iterator iF = nodes.begin(), eF = nodes.end(); iF!=eF; iF++) {
     for (DGVectTy::reverse_iterator iR = nodes.rbegin();

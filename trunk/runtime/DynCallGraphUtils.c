@@ -29,7 +29,6 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
   if (g->nextSlot == 0) {
   	if (strcmp(name, "main") != 0)
   		return;
-
   	/* initialize graph */
   	g->currentSize = STARTSIZE;
   	g->nextSlot = STARTSLOT;
@@ -54,10 +53,8 @@ void insertNode(fGraphT *g, char *name, unsigned num) {
 
   	/* check array size and increase dynamically */
   	if (g->nextSlot == g->currentSize) {
-    	printf ("nextslot: %i - currentsize: %i\n", g->nextSlot, g->currentSize);
   		g->currentSize *= 2;
-      assert((g->array = realloc(g->array, g->currentSize * sizeof(fNodeT)))
-								!= NULL && "Error! Not enough memory!");
+      g->array = (fNodeT*)realloc(g->array, g->currentSize * sizeof(fNodeT));
   	}
 
     /* check if node already exist */
@@ -154,12 +151,13 @@ double calcOverhead(fGraphT *g, unsigned nodeIndex,
 	fNodeT *pNode = &g->array[nodeIndex];
 
 	/* increase overhead per called function */
-	if (!fnOvhds[nodeIndex]) {
+	if (fnOvhds[nodeIndex] == 0) {
 
 		 // 2 methods per procedure * call number times * (get_time + call ovhd)
-		fnOvhds[nodeIndex] += 3 * pNode->count * CallOverhead
+		//fnOvhds[nodeIndex] += 3 * pNode->count * CallOverhead;
 		// accumulated overhead for all calls of the given procedure
-												  + pNode->ovTime;
+		if (pNode->ovTime >= 0)
+			fnOvhds[nodeIndex] += pNode->ovTime;
 
 		// consider inner calls recursively
 	  tmp = pNode->first_child;
@@ -213,7 +211,7 @@ void writeGraphToFile(fGraphT *g, const char * fileName) {
   	return;
 
 	double *fnOvhds = (double *) malloc(g->nextSlot * sizeof(double));
-	memset(fnOvhds,0,sizeof((*fnOvhds)));
+	memset(fnOvhds,'\0',g->nextSlot);
 
   /* open file for writing */
   FILE *outFile = fopen(fileName, "w");
