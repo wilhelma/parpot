@@ -4,7 +4,7 @@
 # Indicate where we are relative to the top of the source tree.
 #
 LEVEL=../..
-DSA_INCLUDE=/home/wilhelma/tools/llvm30/projects/poolalloc/include/dsa
+DSA_INCLUDE=/home/wilhelma/tools/llvm/projects/poolalloc/include/dsa
 
 #
 # Give the name of a library.  This will build a dynamic version.
