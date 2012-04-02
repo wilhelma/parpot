@@ -27,7 +27,7 @@ Function* AnalysisContext::getFunctionPtr(const CallSite &cs) const {
   CallGraphNode *cgNode = pCG_->getExternalCallingNode();
   for (CallGraphNode::iterator iCGN = cgNode->begin(),
         eCGN = cgNode->end(); iCGN != eCGN; ++iCGN) {
-    if (iCGN->second->getFunction()->getNameStr() == concrete) {
+    if (iCGN->second->getFunction()->getName().str() == concrete) {
       return iCGN->second->getFunction();
     }
   }

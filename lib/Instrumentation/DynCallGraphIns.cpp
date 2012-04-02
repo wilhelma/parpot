@@ -64,7 +64,7 @@ GlobalVariable* DynCallGraphIns::getGV(Module &mod, LLVMContext &context,
     return globalVars.find(str)->second;
 
   // add global variable with function name
-  Constant *msg_0 = ConstantArray::get(context, str);
+  Constant *msg_0 = ConstantArray::get(ArrayType::get(Type::getInt8Ty(Context), Elts.size());str);
   GlobalVariable *fnc = new GlobalVariable(
     mod, msg_0->getType(), true, GlobalValue::InternalLinkage, msg_0, "fnc");
   globalVars[str] = fnc;
@@ -108,7 +108,7 @@ bool DynCallGraphIns::runOnModule(Module &M) {
 
         Function *f = pCS->getCalledFunction();
         GlobalVariable *gv;
-        if (f && f->getNameStr() == "llvm_call_finished_instruction")
+        if (f && f->getName().str() == "llvm_call_finished_instruction")
         	continue;
         if (f) {
           gv = getGV(M, F->getContext(), f->getName());

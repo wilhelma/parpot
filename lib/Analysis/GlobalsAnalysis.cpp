@@ -48,7 +48,7 @@ void llvm::GlobalsAnalysis::analyze(Function *parent,
       else continue;
 
       dgIt->second->addDependence(iA, iB, dt,
-                        "G:"+iGA->first->getNameStr(), "G:"+iGA->first->getNameStr());
+                        "G:"+iGA->first->getName().str(), "G:"+iGA->first->getName().str());
     }
   }
 }
