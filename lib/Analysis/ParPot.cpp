@@ -247,6 +247,7 @@ void ParPot::collectNodeSets(Function *parent) {
       CallSite cs(&*it);
       Function *tmp = ctx_->getFunctionPtr(cs);
       if (!tmp) continue;
+
       DepGraphNode *node = graph->getNode(&*it, /*create if missing*/ true);
       nodes.push_back(std::make_pair(node, tmp));
     }

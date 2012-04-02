@@ -59,6 +59,8 @@ bool DebugInfoWriter::runOnModule(Module &M) {
 		sub.store(DebugInfo::getFileName());
 	}
 
+	errs() << "TEST\n";
+
 	// store line numbers of function calls
 	std::string displayName, file, directory, type;
 	unsigned callCounter = 0;
@@ -73,9 +75,15 @@ bool DebugInfoWriter::runOnModule(Module &M) {
           continue;
 
 			  if (MDNode *N = i->getMetadata("dbg")) {
+
 				   DILocation loc(N);
-				   CallInstruction ci(callCounter, loc.getLineNumber(),
+			  	 DILocation orig = loc.getOrigLocation();
+			  	 if (orig)
+			  		 loc = orig;
+
+		  		 CallInstruction ci(callCounter, loc.getLineNumber(),
 														  loc.getFilename());
+
 				   ci.store(DebugInfo::getFileName());
 			  }
 				callCounter++;
