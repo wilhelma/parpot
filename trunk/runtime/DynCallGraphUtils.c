@@ -211,7 +211,7 @@ void writeGraphToFile(fGraphT *g, const char * fileName) {
   	return;
 
 	double *fnOvhds = (double *) malloc(g->nextSlot * sizeof(double));
-	memset(fnOvhds,'\0',g->nextSlot);
+	memset(fnOvhds, 0, g->nextSlot * sizeof(double));
 
   /* open file for writing */
   FILE *outFile = fopen(fileName, "w");
