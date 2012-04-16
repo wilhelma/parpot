@@ -98,33 +98,17 @@ bool DynCallGraphParserPass::runOnModule(Module &M) {
     return false;
   }
 
-  // filter functions that shall be instrumented
-  std::set<Function *> FunctionsToConsider;
-  unsigned NumFunctions = 0;
-  for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
-    if (F->isDeclaration()) continue;
-    ++NumFunctions;
-    FunctionsToConsider.insert(F);
-  }
-
   // find each call-/invoke-instruction and create link
   unsigned int i = 1; // 0 is for main function
   for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F)
-    if (FunctionsToConsider.count(F))
+  	if (!F->isDeclaration())
 
       // add notify-call instructions
-      for (inst_iterator it = inst_begin(F), e = inst_end(F); it != e; ++it) {
-        CallSite *pCS;
-        if (CallInst *callInst = dyn_cast<CallInst>(&*it))
-          pCS = new CallSite(callInst);
-        else if (InvokeInst *invokeInst = dyn_cast<InvokeInst>(&*it))
-          pCS = new CallSite(invokeInst);
-        else
-          continue;
-
-        linkInstruction(i, &*it); // link instruction to dyncallgraph node
-        i++; // increment function count
-      }
+      for (inst_iterator it = inst_begin(F), e = inst_end(F); it != e; ++it)
+      	if (isa<CallInst>(&*it) || isa<InvokeInst>(&*it)) {
+      		linkInstruction(i, &*it); // link instruction to dyncallgraph node
+      		i++; // increment function count
+      	}
 
   return false;
 }
