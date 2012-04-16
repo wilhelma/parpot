@@ -26,8 +26,6 @@
 #include <map>
 using namespace llvm;
 
-STATISTIC(NumFunctionsModified, "The # of functions modified.");
-
 namespace {
 
   /// DynCallGraphIns is a module pass which inserts library calls in llvm
@@ -81,54 +79,41 @@ bool DynCallGraphIns::runOnModule(Module &M) {
     return false;  // No main, no instrumentation!
   }
 
-  // filter functions that shall be instrumented
-  std::set<Function*> FunctionsToInstrument;
-  unsigned NumFunctions = 0;
-  for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
-    if (F->isDeclaration()) continue;
-    ++NumFunctions;
-    FunctionsToInstrument.insert(F);
-  }
-  NumFunctionsModified = NumFunctions;
-
   // instrument every call / invoke instruction
   unsigned int i = 1; // 0 is for main function
   for (Module::iterator F = M.begin(), E = M.end(); F != E; ++F) {
-    if (FunctionsToInstrument.count(F)) {
+  	if (!F->isDeclaration()) {
+  		// add notify-call instructions
+			for (inst_iterator it = inst_begin(F), e = inst_end(F); it != e; ++it) {
+				CallSite *pCS;
+				if (CallInst *callInst = dyn_cast<CallInst>(&*it))
+					pCS = new CallSite(callInst);
+				else if (InvokeInst *invokeInst = dyn_cast<InvokeInst>(&*it))
+					pCS = new CallSite(invokeInst);
+				else
+					continue;
 
-      // add notify-call instructions
-      for (inst_iterator it = inst_begin(F), e = inst_end(F); it != e; ++it) {
-        CallSite *pCS;
-        if (CallInst *callInst = dyn_cast<CallInst>(&*it))
-          pCS = new CallSite(callInst);
-        else if (InvokeInst *invokeInst = dyn_cast<InvokeInst>(&*it))
-          pCS = new CallSite(invokeInst);
-        else
-          continue;
+				Function *f = pCS->getCalledFunction();
+				GlobalVariable *gv;
+				if (f && f->getNameStr() == "llvm_call_finished_instruction")
+					continue;
+				if (f) {
+					gv = getGV(M, F->getContext(), f->getName());
+				} else {
+					gv = getGV(M, F->getContext(), "ext");
+				}
+				addNotifyCall(pCS , it->getParent(), "llvm_call_instruction",
+						"llvm_call_finished_instruction", gv, i);
 
-        Function *f = pCS->getCalledFunction();
-        GlobalVariable *gv;
-        if (f && f->getNameStr() == "llvm_call_finished_instruction")
-        	continue;
-        if (f) {
-          gv = getGV(M, F->getContext(), f->getName());
-        } else {
-          gv = getGV(M, F->getContext(), "ext");
-        }
-        addNotifyCall(pCS , it->getParent(), "llvm_call_instruction",
-            "llvm_call_finished_instruction", gv, i);
+				i++; // increment function counter
+				delete pCS;
+			}
 
-        delete pCS;
-
-        ++it; // increment iterator to pass over new calls
-        i++; // increment function count
-      }
-
-      // add function called - call
-      GlobalVariable *gv = getGV(M, F->getContext(), F->getName());
-      addNotifyFnCalled(&*F, "llvm_function_called", gv);
-      }
-    }
+			// add function called - call
+			GlobalVariable *gv = getGV(M, F->getContext(), F->getName());
+			addNotifyFnCalled(&*F, "llvm_function_called", gv);
+		}
+	}
 
   // Add the initialization call to main.
   insertPrepareCallGraph(Main, "llvm_build_and_write_dyncallgraph");

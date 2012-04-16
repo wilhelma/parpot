@@ -190,12 +190,8 @@ void ParPot::print(raw_ostream &out, const Module *M) const {
         out << "IR<" << tmp->getName();
 
       // dump line number of instruction
-      if (reader.getCallInstruction((*iNode)->getInstruction(), iC)) {
-      	if (tmp->getName() == "_Z12plate_detectP5img_t") {
-      		errs() << *(*iNode)->getInstruction() << " . " << *(*iC)->getInstruction() << "\n";
-      	}
+      if (reader.getCallInstruction((*iNode)->getInstruction(), iC))
       	out << "(" << (*iC)->getFile() << ", " << (*iC)->getLineNo() << ") ";
-      }
     }
 
     // dump savings
