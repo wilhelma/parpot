@@ -24,6 +24,7 @@ void llvm::CorrelationAnalysis::analyze(Function* parent,
   DGNodeSet::DepGraphMapTy::iterator dgIt = ctx_->getDepGraphs()->find(parent);
   Function *fA = ctx_->getFunctionPtr(CallSite(iA));
 
+
   if (fA) {
     // consider pointer/reference parameters
   	Function::arg_iterator it = fA->arg_begin(), e = fA->arg_end();
@@ -46,14 +47,14 @@ void llvm::CorrelationAnalysis::analyze(Function* parent,
           iGA != eGA; ++iGA) {
     	if (iGA->second == Change &&
     			checkDefUse(iGA->first, &*iB, 0, false, false)) {
-        dgIt->second->addDependence(iA, iB, ControlDependence,
+					dgIt->second->addDependence(iA, iB, ControlDependence,
                                   iGA->first->getName(), "-");
       }
     }
 
 		// consider instruction itself (control dependence caused by a return value)
 		if (checkDefUse(&*iA, &*iB, 0, true, false)) {
-			dgIt->second->addDependence(iA, iB, ControlDependence, NoObj, NoObj);
+			dgIt->second->addDependence(iA, iB, CorrelationDependece, NoObj, NoObj);
 		}
   }
 }

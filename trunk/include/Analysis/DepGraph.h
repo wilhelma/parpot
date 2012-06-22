@@ -26,7 +26,8 @@ enum DependenceType {
   OutputDependence        = 0x4,
   ControlDependence       = 0x8,
   NoDominateDependence    = 0x10,
-  IncomingFlag            = 0x20
+  IncomingFlag            = 0x20,
+  CorrelationDependece		= 0x40
 };
 
 /// dependence class

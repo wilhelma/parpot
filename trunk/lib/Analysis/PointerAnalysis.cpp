@@ -59,12 +59,14 @@ void PointerAnalysis::analyze(Function* parent,
 
   		//pDSG->computeNodeMapping(iSetA->first, iSetB->first, nodeMap, false);
   		if (iSetA->first.getNode() == iSetB->first.getNode()){//!nodeMap.empty()){
-        std::string objA = NoObj, objB = NoObj;
+
+  			std::string objA = NoObj, objB = NoObj;
         objA = iSetA->second;
         objB = iSetB->second;
 
 				ArgModRefResult resA = getModRefForDSNode(csA, iSetA->first, pDSG);
 				ArgModRefResult resB = getModRefForDSNode(csB, iSetB->first, pDSG);
+
 
 				// true (and anti-) dependence (A -> B)
 				if ((resA & Mod) && (resB & Ref))
