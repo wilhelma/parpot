@@ -162,8 +162,8 @@ ArgModRefResult Analysis::getModRefForDSNode(const CallSite &cS,
 	return result;
 }
 
-bool Analysis::checkDefUse(Value *val, Instruction *iB,
-												 int level, bool phiVisited, bool print) {
+bool Analysis::checkDefUse(Value *val, Instruction *iB, int level,
+		bool phiVisited, bool print) {
 	if (print)
 		errs() << "-value: " << *val << " at level: " << level << "\n";
 
@@ -181,13 +181,15 @@ bool Analysis::checkDefUse(Value *val, Instruction *iB,
      Instruction *inst = dyn_cast<Instruction>(&*val);
 
      // correlation found
-     if (inst == iB)
-       return phiVisited;
+     if (inst == iB) {
+    	 return phiVisited;
+     }
   }
 
   // consider store instructions
   if (StoreInst *sInst = dyn_cast<StoreInst>(&*val)) {
-    if (checkDefUse(&*sInst->getPointerOperand(), iB, level + 1, phiVisited, print))
+    if (checkDefUse(&*sInst->getPointerOperand(), iB, level + 1,
+										phiVisited, print))
       return phiVisited;
   }
 
@@ -196,10 +198,22 @@ bool Analysis::checkDefUse(Value *val, Instruction *iB,
   	if (checkBranchDefUse(bInst, iB, level + 1, 0, print))
   		return true;
 
+  // consider llvm.memcpy instructions
+  if (MemCpyInst *mcpInst = dyn_cast<MemCpyInst>(&*val)) {
+  	Value *v = const_cast<Value*>(mcpInst->getArgOperand(0));
+  	if (checkDefUse(v, iB, level + 1, phiVisited, print))
+  		return true;
+  	if (Operator::getOpcode(v) == Instruction::BitCast) {
+  	  v = cast<Operator>(v)->getOperand(0);
+  	  errs() << *mcpInst << "\n" << "source: " << *v << "\n";
+			if (checkDefUse(v, iB, level + 1, phiVisited, print))
+				return true;
+  	}
+  }
+
   // check every use of the value recursively
   for (Value::use_iterator iUse = val->use_begin(), eUse = val->use_end();
         iUse != eUse; ++iUse) {
-
     if (checkDefUse(*iUse, iB, level + 1, phiVisited, print))
       return true;
   }
@@ -207,8 +221,8 @@ bool Analysis::checkDefUse(Value *val, Instruction *iB,
   return false;
 }
 
-bool Analysis::checkBranchDefUse(BranchInst *bInst, Instruction *iB,
-															 int level, int branchLevel, bool print) {
+bool Analysis::checkBranchDefUse(BranchInst *bInst, Instruction *iB, int level,
+																 int branchLevel, bool print) {
   static std::set<BranchInst *> visitedBranches;
   if (!branchLevel)
     visitedBranches.clear();

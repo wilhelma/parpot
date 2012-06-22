@@ -16,6 +16,8 @@
 #include "llvm/Module.h"
 #include "llvm/Analysis/AliasAnalysis.h"
 #include "llvm/Analysis/Passes.h"
+#include "llvm/IntrinsicInst.h"
+#include "llvm/Operator.h"
 
 #include "Analysis/AnalysisContext.h"
 

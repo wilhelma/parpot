@@ -131,6 +131,8 @@ void ParPot::printDepType(raw_ostream &out, unsigned char type) const {
     out << "Control dependence ";
   if (type & NoDominateDependence)
     out << "No dominator dependence ";
+  if (type & CorrelationDependece)
+  	out << "Correlation dependence ";
 }
 
 void ParPot::print(raw_ostream &out, const Module *M) const {
@@ -203,17 +205,7 @@ void ParPot::print(raw_ostream &out, const Module *M) const {
     // consider every instruction that has dependencies
     for (DGNodeSet::DepSetTy::iterator iDep = (*iSet)->dep_begin(),
 							eDep = (*iSet)->dep_end(); iDep != eDep; iDep++) {
-    	std::string sFgn;
-    	Function *fFgn = ctx_->getFunctionPtr(
-												CallSite((*iDep)->getToOrFromNode()->getInstruction()));
-      if (reader.getSubprogram(fFgn->getName(), iS))
-        sFgn = (*iS)->getDisplayName();
-      else {
-        sFgn = "IR<";
-        sFgn += fFgn->getName();
-        sFgn += "> ";
-      }
-      out << "    " << sFgn << ": ";
+      out << "\t";
       out << (*iDep)->getOwnObj() << " -> " << (*iDep)->getFgnObj() << " - ";
       printDepType(out, (*iDep)->getDepType());
       out << '\n';
